@@ -17,14 +17,21 @@ stop(PlayerSrv) ->
 %%% gen_server API
 
 -record(state, {
-    socket :: pid()
+    socket :: pid(),
+    storage :: pid()
 }).
 
 init(Socket) ->
+    {ok, StorageSrv} = supervisor:start_child(pl_storage_sup, []),
+
     State = #state{
-        socket = Socket
+        socket = Socket,
+        storage = StorageSrv
     },
-    lager:info("player created ~p ~p", [self(), State]),
+
+    lager:info("Player created with pid ~p; socket ~p; storage ~p",
+               [self(), State, StorageSrv]),
+
     {ok, State}.
 
 handle_call({auth, _Login, _Pass}, _From, State) ->

@@ -16,25 +16,35 @@ start_link(Ref, _Socket, Transport, Opts) ->
 
 init(Ref, Transport, _Opts = []) ->
     {ok, Socket} = ranch:handshake(Ref),
+
     lager:info("new connection, create player"),
     {ok, PlayerSrv} = supervisor:start_child(pl_player_sup, [Socket]),
     Res = gen_tcp:controlling_process(Socket, PlayerSrv),
     lager:info("controlling_process res:~p", [Res]),
+
     State = #state{
         transport = Transport,
         socket = Socket,
         player_srv = PlayerSrv
     },
+
     loop(State).
 
-loop(#state{socket = Socket, transport = Transport, player_srv = PlayerSrv} = State) ->
-    {ok, ClientDisconnectTimeoutMin} = application:get_env(polyana, client_disconnect_timeout),
+loop(#state{socket = Socket,
+            transport = Transport,
+            player_srv = PlayerSrv} = State) ->
+    {ok, ClientDisconnectTimeoutMin} = application:get_env(
+                                            polyana,
+                                            client_disconnect_timeout),
+
     ClientDisconnectTimeoutMilliSec = ClientDisconnectTimeoutMin * 60 * 1000,
+
     case Transport:recv(Socket, 0, ClientDisconnectTimeoutMilliSec) of
         {ok, <<"PING", _/binary>>} ->
             Reply = handle_ping(),
             Transport:send(Socket, Reply),
             loop(State);
+
         {ok, <<"AUTH ", LoginPass/binary>>} ->
             case handle_auth(PlayerSrv, LoginPass) of
                 {ok, Reply} ->
@@ -45,15 +55,18 @@ loop(#state{socket = Socket, transport = Transport, player_srv = PlayerSrv} = St
                     pl_player_srv:stop(PlayerSrv),
                     ok = Transport:close(Socket)
             end;
+
         {ok, <<"GAME", _/binary>>} ->
             Reply = handle_game(),
             Transport:send(Socket, Reply),
             loop(State);
+
         {ok, UnknownData} ->
             Reply = <<"INVALID QUERY\n">>,
             lager:warning("Invalid Query:~p", [UnknownData]),
             Transport:send(Socket, Reply),
             loop(State);
+
         {error, Error} ->
             lager:info("close connection, ~p stop player", [Error]),
             pl_player_srv:stop(PlayerSrv),
@@ -70,20 +83,6 @@ handle_auth(PlayerSrv, LoginPass) ->
         ok -> {ok, <<"SUCCESS\n">>};
         error -> {error, <<"AUTH FAILED\n">>}
     end.
-
-
-handle_get_players() ->
-%%    AllSessions = pl_player_storage:get_all_session(),
-%%    Names = lists:filtermap(
-%%        fun(PlayerSrv) ->
-%%            case pl_player_srv:get_name(PlayerSrv) of
-%%                {ok, Name} -> {true, Name};
-%%                {error, not_auth} -> false
-%%            end,
-%%            AllSessions
-%%    ),
-%%    NamesIO = list_concat_to_binary
-    <<"[Vasja, Petja]\n">>.
 
 handle_game() ->
     <<

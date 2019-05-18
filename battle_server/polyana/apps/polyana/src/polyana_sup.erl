@@ -16,14 +16,6 @@ init([]) ->
     },
 
     ChildSpecifications = [
-        % #{
-        %     id => pl_player_storage,
-        %     start => {pl_player_storage, start_link, []},
-        %     restart => permanent,
-        %     shutdown => 2000,
-        %     type => worker,
-        %     modules => [pl_player_storage]
-        % },
         #{
             id => pl_player_sup,
             start => {pl_player_sup, start_link, []},
@@ -31,6 +23,14 @@ init([]) ->
             shutdown => 2000,
             type => supervisor,
             modules => [pl_player_sup]
+        },
+        #{
+            id => pl_storage_sup,
+            start => {pl_storage_sup, start_link, []},
+            restart => permanent,
+            shutdown => 2000,
+            type => supervisor,
+            modules => [pl_storage_sup]
         }
     ],
     {ok, {SupervisorSpecification, ChildSpecifications}}.
