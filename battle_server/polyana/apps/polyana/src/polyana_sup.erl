@@ -31,6 +31,14 @@ init([]) ->
             shutdown => 2000,
             type => supervisor,
             modules => [pl_storage_sup]
+        },
+        #{
+            id => pl_matching_sup,
+            start => {pl_matching_sup, start_link, []},
+            restart => permanent,
+            shutdown => 2000,
+            type => supervisor,
+            modules => [pl_matching_sup]
         }
     ],
     {ok, {SupervisorSpecification, ChildSpecifications}}.
