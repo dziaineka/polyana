@@ -1,0 +1,9 @@
+{application, polyana, [
+    {description, "A polyana Game"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {polyana_app, []}},
+    {applications, [kernel, stdlib, lager, ranch]},
+    {env,[]},
+    {modules, []}
+]}.
