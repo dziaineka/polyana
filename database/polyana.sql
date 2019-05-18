@@ -1,5 +1,5 @@
 CREATE TABLE "player" (
-  "id" int PRIMARY KEY,
+  "id" serial PRIMARY KEY,
   "nickname" text NOT NULL,
   "password" text NOT NULL,
   "token" text,
@@ -21,7 +21,7 @@ CREATE TYPE event_type AS ENUM('registration',
                                'logout');
 
 CREATE TABLE "event" (
-  "id" int PRIMARY KEY,
+  "id" serial PRIMARY KEY,
   "player_id" int NOT NULL,
   "type" event_type NOT NULL,
   "source" int,
@@ -30,7 +30,7 @@ CREATE TABLE "event" (
 );
 
 CREATE TABLE "transaction" (
-  "id" int PRIMARY KEY,
+  "id" serial PRIMARY KEY,
   "event_id" int NOT NULL,
   "player_id" int NOT NULL,
   "currency_id" int NOT NULL,
@@ -41,7 +41,7 @@ CREATE TYPE currency_type AS ENUM('silver',
                                   'gold');
 
 CREATE TABLE "currency" (
-  "id" int PRIMARY KEY,
+  "id" serial PRIMARY KEY,
   "type" currency_type NOT NULL,
   "rate" float NOT NULL
 );
@@ -51,21 +51,21 @@ CREATE TYPE achievement_type AS ENUM('5_battles',
                                      'first_win');
 
 CREATE TABLE "achievement" (
-  "id" int PRIMARY KEY,
+  "id" serial PRIMARY KEY,
   "type" achievement_type NOT NULL,
   "player_id" int NOT NULL,
   "created" timestamp without time zone DEFAULT timezone('UTC'::text, now())
 );
 
 CREATE TABLE "money" (
-  "id" int PRIMARY KEY,
+  "id" serial PRIMARY KEY,
   "player_id" int NOT NULL,
   "currency_id" int NOT NULL,
   "amount" int
 );
 
 CREATE TABLE "battle" (
-  "id" int PRIMARY KEY,
+  "id" serial PRIMARY KEY,
   "currency_id" int NOT NULL,
   "bid" int,
   "winner" int NOT NULL,
