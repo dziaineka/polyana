@@ -18,7 +18,8 @@ stop(PlayerSrv) ->
 
 -record(state, {
     socket :: pid(),
-    storage :: pid()
+    storage :: pid(),
+    player_id = 0
 }).
 
 init(Socket) ->
@@ -34,15 +35,25 @@ init(Socket) ->
 
     {ok, State}.
 
-handle_call({auth, _Login, _Pass}, _From, State) ->
-    %% go to database
-    {reply, ok, State};
+handle_call({auth, Login, Pass}, _From, State) ->
+    StorageSrv = State#state.storage,
+    Res = pl_storage_srv:check_credentials(StorageSrv, Login, Pass),
+
+    case Res of
+        {ok, PlayerId} ->
+            {reply, ok, State#state{player_id = PlayerId}};
+
+        error ->
+            {reply, error, State}
+    end;
 
 handle_call({auth, _Login, _Pass}, _From, State) ->
     {reply, error, State};
 
 handle_call(stop, _From, State) ->
+    % stop storage
     {stop, normal, ok, State};
+
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 

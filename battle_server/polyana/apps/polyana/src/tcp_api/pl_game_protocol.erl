@@ -52,8 +52,7 @@ loop(#state{socket = Socket,
                     loop(State);
                 {error, Reply} ->
                     Transport:send(Socket, Reply),
-                    pl_player_srv:stop(PlayerSrv),
-                    ok = Transport:close(Socket)
+                    loop(State)
             end;
 
         {ok, <<"GAME", _/binary>>} ->
