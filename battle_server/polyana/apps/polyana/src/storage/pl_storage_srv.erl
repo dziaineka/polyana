@@ -3,11 +3,12 @@
 -behaviour(gen_server).
 
 %% API
--export([stop/1, start_link/0, check_credentials/2]).
+-export([stop/1, start_link/0, check_credentials/2, get_rating/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -record(state, {connection}).
+
 
 stop(Name) ->
     gen_server:call(Name, stop).
@@ -17,6 +18,10 @@ start_link() ->
 
 check_credentials(Login, Pass) ->
     gen_server:call(?MODULE, {check_credentials, Login, Pass}).
+
+get_rating(PlayerId) ->
+    gen_server:call(?MODULE, {get_rating, PlayerId}).
+
 
 init(_Args) ->
     {ok, User} = application:get_env(polyana, pguser),
@@ -49,6 +54,24 @@ handle_call({check_credentials, Login, Pass},
         {ok, _Columns, [Player]} ->
             PlayerId = element(1, Player),
             {reply, {ok, PlayerId}, State};
+
+        Unhandled ->
+            lager:warning("Unexpected query result: ~p", [Unhandled]),
+            {reply, error, State}
+    end;
+
+handle_call({get_rating, PlayerId},
+            _From,
+            State = #state{connection = Conn}) ->
+    Query = ["select winrate from player where id = ",
+             integer_to_list(PlayerId)],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, _Columns, []} ->
+            {reply, error, State};
+
+        {ok, _Columns, [{BinRating}]} ->
+            {reply, {ok, binary_to_integer(BinRating)}, State};
 
         Unhandled ->
             lager:warning("Unexpected query result: ~p", [Unhandled]),
