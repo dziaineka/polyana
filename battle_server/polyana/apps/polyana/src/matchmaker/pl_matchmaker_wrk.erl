@@ -15,6 +15,6 @@ init() ->
 loop() ->
     % matching
     lager:info("matching process"),
-    timer:sleep(15000),
+    timer:sleep(30000),
 
     loop().
