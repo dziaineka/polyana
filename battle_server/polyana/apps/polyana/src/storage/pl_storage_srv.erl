@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([stop/1, start_link/0, check_credentials/3]).
+-export([stop/1, start_link/0, check_credentials/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
@@ -13,10 +13,10 @@ stop(Name) ->
     gen_server:call(Name, stop).
 
 start_link() ->
-    gen_server:start_link(?MODULE, [], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-check_credentials(StorageSrv, Login, Pass) ->
-    gen_server:call(StorageSrv, {check_credentials, Login, Pass}).
+check_credentials(Login, Pass) ->
+    gen_server:call(?MODULE, {check_credentials, Login, Pass}).
 
 init(_Args) ->
     {ok, User} = application:get_env(polyana, pguser),

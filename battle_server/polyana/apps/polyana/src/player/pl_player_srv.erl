@@ -18,26 +18,21 @@ stop(PlayerSrv) ->
 
 -record(state, {
     socket :: pid(),
-    storage :: pid(),
     player_id = 0
 }).
 
 init(Socket) ->
-    {ok, StorageSrv} = supervisor:start_child(pl_storage_sup, []),
-
     State = #state{
-        socket = Socket,
-        storage = StorageSrv
+        socket = Socket
     },
 
-    lager:info("Player created with pid ~p; socket ~p; storage ~p",
-               [self(), State, StorageSrv]),
+    lager:info("Player created with pid ~p; state ~p",
+               [self(), State]),
 
     {ok, State}.
 
 handle_call({auth, Login, Pass}, _From, State) ->
-    StorageSrv = State#state.storage,
-    Res = pl_storage_srv:check_credentials(StorageSrv, Login, Pass),
+    Res = pl_storage_srv:check_credentials(Login, Pass),
 
     case Res of
         {ok, PlayerId} ->
@@ -51,7 +46,6 @@ handle_call({auth, _Login, _Pass}, _From, State) ->
     {reply, error, State};
 
 handle_call(stop, _From, State) ->
-    % stop storage
     {stop, normal, ok, State};
 
 handle_call(_Request, _From, State) ->

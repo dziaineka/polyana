@@ -11,7 +11,7 @@ start_link() ->
 
 init(_Args) ->
     SupervisorSpecification = #{
-        strategy => simple_one_for_one, % one_for_one | one_for_all | rest_for_one | simple_one_for_one
+        strategy => one_for_one, % one_for_one | one_for_all | rest_for_one | simple_one_for_one
         intensity => 10,
         period => 60},
 
