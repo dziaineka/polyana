@@ -4,9 +4,9 @@ CREATE TABLE "player" (
   "password" text NOT NULL,
   "token" text,
   "token_expiration" timestamp without time zone,
-  "played_battles" int NOT NULL,
-  "battles_won" int NOT NULL,
-  "winrate" float,
+  "played_battles" int NOT NULL DEFAULT 0,
+  "battles_won" int NOT NULL DEFAULT 0,
+  "winrate" float NOT NULL DEFAULT 0,
 
   CONSTRAINT player_nickname_key UNIQUE (nickname),
   CONSTRAINT player_token_key UNIQUE (token)
