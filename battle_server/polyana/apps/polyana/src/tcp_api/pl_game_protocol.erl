@@ -82,9 +82,27 @@ loop(#state{socket = Socket,
 handle_ping() -> <<"PONG\n">>.
 
 handle_auth(PlayerSrv, LoginPass) ->
-    [Login, Pass | _] = binary:split(LoginPass, [<<" ">>, <<"\n">>, <<"\r">>], [global]),
-    lager:info("try to login with Login:~p Pass:~p", [Login, Pass]),
-    Res = pl_player_srv:auth(PlayerSrv, Login, Pass),
+    FilteredInput = lists:filter(
+        fun
+            (ByteString) when ByteString == <<>> ->
+                false;
+
+            (_) ->
+                true
+        end,
+        binary:split(LoginPass, [<<" ">>, <<"\n">>, <<"\r">>], [global])
+    ),
+
+    case FilteredInput of
+        [Login, Pass | _] ->
+            lager:info("try to login with Login:~p Pass:~p", [Login, Pass]),
+            Res = pl_player_srv:auth(PlayerSrv, Login, Pass);
+
+        [Token] ->
+            lager:info("try to login with Token:~p", [Token]),
+            Res = pl_player_srv:auth(PlayerSrv, Token)
+    end,
+
     case Res of
         ok -> {ok, <<"SUCCESS\n">>};
         error -> {error, <<"AUTH FAILED\n">>}

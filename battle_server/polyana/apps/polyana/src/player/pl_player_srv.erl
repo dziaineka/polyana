@@ -1,7 +1,7 @@
 -module(pl_player_srv).
 -behavior(gen_server).
 
--export([start_link/1, auth/3, stop/1]).
+-export([start_link/1, auth/3, auth/2, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
@@ -10,6 +10,9 @@ start_link(ReplyFun) ->
 
 auth(PlayerSrv, Login, Pass) ->
     gen_server:call(PlayerSrv, {auth, Login, Pass}).
+
+auth(PlayerSrv, Token) ->
+    gen_server:call(PlayerSrv, {auth, Token}).
 
 stop(PlayerSrv) ->
     gen_server:call(PlayerSrv, stop).
@@ -34,6 +37,17 @@ init(ReplyFun) ->
 
 handle_call({auth, Login, Pass}, _From, State) ->
     Res = pl_storage_srv:check_credentials(Login, Pass),
+
+    case Res of
+        {ok, PlayerId} ->
+            {reply, ok, State#state{player_id = PlayerId}};
+
+        error ->
+            {reply, error, State}
+    end;
+
+handle_call({auth, Token}, _From, State) ->
+    Res = pl_storage_srv:check_token(Token),
 
     case Res of
         {ok, PlayerId} ->
