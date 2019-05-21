@@ -18,7 +18,13 @@ init(Ref, Transport, _Opts = []) ->
     {ok, Socket} = ranch:handshake(Ref),
 
     lager:info("new connection, create player"),
-    {ok, PlayerSrv} = supervisor:start_child(pl_player_sup, [Socket]),
+
+    ReplyToUser = fun
+        (Reply) ->
+            Transport:send(Socket, Reply)
+    end,
+
+    {ok, PlayerSrv} = supervisor:start_child(pl_player_sup, [ReplyToUser]),
     Res = gen_tcp:controlling_process(Socket, PlayerSrv),
     lager:info("controlling_process res:~p", [Res]),
 
@@ -29,6 +35,7 @@ init(Ref, Transport, _Opts = []) ->
     },
 
     loop(State).
+
 
 loop(#state{socket = Socket,
             transport = Transport,

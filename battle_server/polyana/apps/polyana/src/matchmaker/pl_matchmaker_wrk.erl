@@ -48,6 +48,8 @@ loop(#state{players_amount = Amount,
 match_players(Amount, Delta) ->
     PlayersAndRatings = ets:foldl(
         fun ({PlayerPid, _PlayerId, Rating}, Players) ->
+            notify_player(PlayerPid),
+
             case length(Players) of
                 Amount ->
                     Players;
@@ -73,6 +75,9 @@ match_players(Amount, Delta) ->
 
     {Players, _Ratings} = lists:unzip(PlayersAndRatings),
     Players.
+
+notify_player(Pid) ->
+    Pid ! matching_in_progress.
 
 remove_from_queue(Players) ->
     lists:foreach(

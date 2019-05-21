@@ -2,10 +2,11 @@
 -behavior(gen_server).
 
 -export([start_link/1, auth/3, stop/1]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2, code_change/3]).
 
-start_link(Socket) ->
-    gen_server:start_link(?MODULE, Socket, []).
+start_link(ReplyFun) ->
+    gen_server:start_link(?MODULE, ReplyFun, []).
 
 auth(PlayerSrv, Login, Pass) ->
     gen_server:call(PlayerSrv, {auth, Login, Pass}).
@@ -17,13 +18,13 @@ stop(PlayerSrv) ->
 %%% gen_server API
 
 -record(state, {
-    socket :: pid(),
+    reply_to_user,
     player_id = 0
 }).
 
-init(Socket) ->
+init(ReplyFun) ->
     State = #state{
-        socket = Socket
+        reply_to_user = ReplyFun
     },
 
     lager:info("Player created with pid ~p; state ~p",
@@ -53,6 +54,11 @@ handle_call(_Request, _From, State) ->
 
 handle_cast(_Request, State) ->
     {noreply, State}.
+
+
+handle_info(matching_in_progress, #state{reply_to_user = ReplyFun} = State) ->
+    ReplyFun(<<"Searching the opponent...\n">>),
+    {noreply, State};
 
 handle_info(_Request, State) ->
     {noreply, State}.
