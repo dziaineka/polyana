@@ -62,8 +62,8 @@ loop(#state{socket = Socket,
                     loop(State)
             end;
 
-        {ok, <<"GAME", _/binary>>} ->
-            Reply = handle_game(),
+        {ok, <<"BATTLE ", Bid/binary>>} ->
+            Reply = handle_battle(PlayerSrv, Bid),
             Transport:send(Socket, Reply),
             loop(State);
 
@@ -108,13 +108,30 @@ handle_auth(PlayerSrv, LoginPass) ->
         error -> {error, <<"AUTH FAILED\n">>}
     end.
 
-handle_game() ->
-    <<
-        "+---+---+---+\n",
-        "| A |   |   |\n",
-        "+---+---+---+\n",
-        "|   |   |   |\n",
-        "+---+---+---+\n",
-        "|   |   | B |\n",
-        "+---+---+---+\n"
-    >>.
+handle_battle(PlayerSrv, Parameters) ->
+    StrBid = binary:replace(binary:replace(Parameters, <<"\r\n">>, <<>>),
+                            <<" ">>,
+                            <<>>),
+
+    case string:to_integer(StrBid) of
+        {error, _} ->
+            lager:warning("battle ~p", [StrBid]),
+            <<"INVALID PARAMETERS\n">>;
+
+        {Bid, Currency} when
+                (Currency == <<"GOLD">>) or (Currency == <<"SILVER">>) -> % прибить гвоздями - это так
+            lager:warning("battle ok ~p ~p", [Bid, Currency]),
+            Res = pl_player_srv:start_battle(PlayerSrv, {Currency, Bid}),
+
+            case Res of
+                ok -> <<"TO BATTLE!\n">>;
+                {error, Reason} -> Reason
+            end;
+
+        _ ->
+            lager:warning("unhandled ~p", [StrBid]),
+            <<"INVALID PARAMETERS\n">>
+    end.
+
+
+

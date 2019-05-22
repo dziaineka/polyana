@@ -116,7 +116,7 @@ handle_call({get_rating, PlayerId},
             _From,
             State = #state{connection = Conn}) ->
     Query = ["select winrate from player where id = ",
-             integer_to_list(PlayerId)],
+             binary_to_list(PlayerId)],
 
     case epgsql:squery(Conn, Query) of
         {ok, _Columns, []} ->

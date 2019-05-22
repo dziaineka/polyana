@@ -47,7 +47,7 @@ loop(#state{players_amount = Amount,
 
 match_players(Amount, Delta) ->
     PlayersAndRatings = ets:foldl(
-        fun ({PlayerPid, _PlayerId, Rating}, Players) ->
+        fun ({PlayerPid, _PlayerId, Rating, _Currency, _Bid}, Players) ->
             notify_player(PlayerPid),
 
             case length(Players) of

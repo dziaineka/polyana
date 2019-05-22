@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([stop/1, start_link/0, add_player/2, delete_player/1]).
+-export([stop/1, start_link/0, add_player/3, delete_player/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
@@ -11,8 +11,9 @@
 stop(Name) ->
     gen_server:call(Name, stop).
 
-add_player(PlayerPid, PlayerId) ->
-    gen_server:cast(?MODULE, {add_player, PlayerPid, PlayerId}).
+add_player(PlayerPid, PlayerId, {Currency, Bid}) ->
+    gen_server:cast(?MODULE,
+                    {add_player, PlayerPid, PlayerId, {Currency, Bid}}).
 
 delete_player(PlayerPid) ->
     gen_server:cast(?MODULE, {delete_player, PlayerPid}).
@@ -33,10 +34,10 @@ handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
 
-handle_cast({add_player, PlayerPid, PlayerId}, State) ->
+handle_cast({add_player, PlayerPid, PlayerId, {Currency, Bid}}, State) ->
     erlang:monitor(process, PlayerPid),
     {ok, Rating} = pl_storage_srv:get_rating(PlayerId),
-    ets:insert(?MODULE, {PlayerPid, PlayerId, Rating}),
+    ets:insert(?MODULE, {PlayerPid, PlayerId, Rating, Currency, Bid}),
     {noreply, State};
 
 handle_cast({delete_player, PlayerPid}, State) ->
