@@ -62,9 +62,6 @@ handle_call({auth, Token}, _From, State) ->
             {reply, error, State}
     end;
 
-handle_call({auth, _Login, _Pass}, _From, State) ->
-    {reply, error, State};
-
 handle_call({start_battle, {Currency, Bid}},
             _From,
             #state{player_id = PlayerId,
@@ -74,6 +71,7 @@ handle_call({start_battle, {Currency, Bid}},
 
     case {AuthDone, PlayerInBattle} of
         {true, false} ->
+            check_enough_money(),
             pl_queue_srv:add_player(self(), PlayerId, {Currency, Bid}),
             {reply, ok, State};
 
@@ -124,3 +122,6 @@ battle_active(Pid) ->
         false ->
             false
     end.
+
+check_enough_money() ->
+    lager:error("EMPLEMENT ME check_enough_money").

@@ -28,12 +28,19 @@ loop(#state{players_amount = Amount,
             loop(State);
 
         _ ->
-            Players = match_players(Amount, Delta),
+            {Currency,
+             Bid,
+             Players,
+             PlayersCurrencies} = match_players(Amount, Delta),
 
             if
                 Amount == length(Players) ->
                     remove_from_queue(Players),
-                    create_room(Players),
+
+                    create_room({Currency,
+                                 Bid,
+                                 lists:zip(Players, PlayersCurrencies)}),
+
                     loop(State);
 
                 true ->
@@ -46,35 +53,60 @@ loop(#state{players_amount = Amount,
     end.
 
 match_players(Amount, Delta) ->
-    PlayersAndRatings = ets:foldl(
-        fun ({PlayerPid, _PlayerId, Rating, _Currency, _Bid}, Players) ->
-            notify_player(PlayerPid),
+    GetGameParams = fun (Player, Acc) ->
+        get_game_parameters(Amount, Delta, Player, Acc)
+    end,
 
-            case length(Players) of
-                Amount ->
-                    Players;
+    [{_PlayerPid, _PlayerId, _Rating, Currency, Bid}] =
+        ets:lookup(pl_queue_srv, ets:first(pl_queue_srv)),
 
-                0 ->
-                    [{PlayerPid, Rating}];
-
-                _ ->
-                    [{_Pid, EtalonRating} | _] = Players,
-
-                    if
-                        abs(EtalonRating - Rating) =< Delta ->
-                            lists:append(Players, [{PlayerPid, Rating}]);
-
-                        true ->
-                            Players
-                    end
-            end
-        end,
-        [],
+    {BattleCurrency, BattleBid, PlayersAndInfo} = ets:foldl(
+        GetGameParams,
+        {Currency, Bid, []},
         pl_queue_srv
     ),
 
-    {Players, _Ratings} = lists:unzip(PlayersAndRatings),
-    Players.
+    {Players, _Ratings, Currencies} = lists:unzip3(PlayersAndInfo),
+
+    {BattleCurrency, BattleBid, Players, Currencies}.
+
+get_game_parameters(Amount,
+                    Delta,
+                    {PlayerPid, _PlayerId, Rating, Currency, Bid},
+                    {BattleCurrency, BattleBid, Players}) ->
+    notify_player(PlayerPid),
+
+    case length(Players) of
+        Amount ->
+            {BattleCurrency, BattleBid, Players};
+
+        0 ->
+            {Currency, Bid, [{PlayerPid, Rating, Currency}]};
+
+        _ ->
+            [{_Pid, EtalonRating, _PlayerCurrency} | _] = Players,
+
+            if
+                abs(EtalonRating - Rating) =< Delta ->
+                    {BattleCurrency, MinBid} =
+                        get_min_bid({BattleCurrency, BattleBid},
+                                    {Currency, Bid}),
+
+                    {
+                        BattleCurrency,
+                        MinBid,
+                        lists:append(Players,
+                                    [{PlayerPid, Rating, Currency}])
+                    };
+
+                true ->
+                    {BattleCurrency, BattleBid, Players}
+            end
+    end.
+
+get_min_bid({BattleCurrency, BattleBid}, {Currency, Bid}) ->
+    lager:error("IMPLEMENT ME get_min_bid"),
+    {BattleCurrency, 100}.
 
 notify_player(Pid) ->
     Pid ! matching_in_progress.
@@ -87,5 +119,5 @@ remove_from_queue(Players) ->
         Players
     ).
 
-create_room(Players) ->
-    lager:info("create room ~p", [Players]).
+create_room(Parameters) ->
+    lager:info("create room ~p", [Parameters]).
