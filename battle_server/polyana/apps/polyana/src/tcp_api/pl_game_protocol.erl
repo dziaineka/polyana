@@ -1,8 +1,9 @@
 -module(pl_game_protocol).
 -behaviour(ranch_protocol).
 
+
 -export([start_link/4, init/3]).
--export([handle_get_players/0]).
+
 
 -record(state, {
     transport,
@@ -10,9 +11,11 @@
     player_srv
 }).
 
+
 start_link(Ref, _Socket, Transport, Opt)->
     Pid = spawn_link(?MODULE, init, [Ref, Transport, Opt]),
     {ok, Pid}.
+
 
 init(Ref, Trasport, _Opt = [])->
     {ok, Socket} = ranch:handshake(Ref),
@@ -26,6 +29,7 @@ init(Ref, Trasport, _Opt = [])->
         player_srv = Pid
     },
     loop(State).
+
 
 loop(#state{transport = Transport, socket = Socket, player_srv = PlayerPid} = State)->
     {ok, Raw_Timeout} = application:get_env(meadow, client_disconnect_timeout),
@@ -67,31 +71,43 @@ loop(#state{transport = Transport, socket = Socket, player_srv = PlayerPid} = St
             loop(State);
         {error, Error}->
             lager:info("close, connection, ~p stop player", [Error]),
-            meadow_battle:stop(PlayerPid),
+            pl_player_srv:stop(PlayerPid),
             ok = Transport:close(Socket)
     end.
 
 
 handle_ping() -> <<"PONG\n">>.
 
+
 handle_auth(PlayerPid, LoginPass) ->
     [Login, Pass | _] = binary:split(LoginPass, [<<" ">>, <<"\n">>, <<"\r">>], [global]),
     lager:info("got login ~p pass ~p", [Login, Pass]),
-    Res = pl_player_srv:auth(PlayerPid, Login, Pass),
+    Res = pl_player_srv:auth(PlayerPid, Login, Pass),% надо проверить функцию для проверки аутентификации
     case Res of
         ok -> {ok , <<"success\n">>};
         error ->
             {error, <<"Incorrect login or password\n">>}
     end.
 
+
 multicast(Raw_Reply, Pid, Transport, Socket, State) ->
 %% функция для отправки сообщение либо всем участникам игры, либо одному в зависимости от ситуации
     case Raw_Reply of
-        {multi, Reply} ->
-            {ok, BattlePid}=meadow_players_srv:get_battle_pid(Pid),
-            Players = meadow_battle:get_players(BattlePid),
+        {win, Reply} -> {ok, BattlePid}=pl_player_srv:get_battle_pid(Pid),%для получения баттл пид
+            Players = pl_battle:get_players(BattlePid),
             lists:foreach(fun(PlayerSrv) ->
-                Player_Socket = meadow_players_srv:get_socket(PlayerSrv),
+                Player_Socket = pl_player_srv:get_socket(PlayerSrv),%для получения сокета
+                PlayerSrv ! close_room, % в pl_player_srv в handle_info нужна слеудющая функция
+                %handle_info(close_room, State) ->
+%%                {noreply, State#state{battle_pid = none}};
+                Transport:send(Player_Socket, Reply) end, Players),
+            pl_battle:stop(BattlePid),
+            loop(State);
+        {multi, Reply} ->
+            {ok, BattlePid}=pl_player_srv:get_battle_pid(Pid), %для получения баттл пид
+            Players = pl_battle:get_players(BattlePid),
+            lists:foreach(fun(PlayerSrv) ->
+                Player_Socket = pl_player_srv:get_socket(PlayerSrv), %для получения сокета
                 Transport:send(Player_Socket, Reply) end, Players),
             loop(State);
         {single, Reply} -> Transport:send(Socket, Reply),
@@ -100,33 +116,24 @@ multicast(Raw_Reply, Pid, Transport, Socket, State) ->
     end.
 
 
-
 handle_command({get_name, Enc}, PlayerPid)->
-    case pl_players_srv:nickname(PlayerPid) of
+    case pl_players_srv:nickname(PlayerPid) of %код для проверки аутентификации
         {ok, _} -> handle_command(Enc, PlayerPid);
         {error, not_auth} -> <<"Login first, please\n">>
     end;
+
 handle_command({get_battle_pid, Enc}, Pid)->
     case meadow_players_srv:get_battle_pid(Pid) of % код для получение battlepid потока
         {ok, BattlePid} -> handle_command(Enc, {BattlePid, Pid});
         {error, not_game} -> <<"First, start game\n">>
     end;
+
 handle_command(start_game, PlayerPid)->
-    PlayerID = pl_players_srv:nickname(PlayerPid),
+    PlayerID = pl_players_srv:nickname(PlayerPid), %код для получения PlayerID, для последуюшей
+                                                        % работы в матчмейкинга
     pl_queue_srv:add_player(PlayerPid, PlayerID);
+
 handle_command({move, Direction},{BattlePid, PlayerPid}) ->
-
-    {Flag, Msg, Raw_Field, {M, _}}= pl_battle:move(BattlePid, PlayerPid, Direction),
-
-    Field= new_field(Raw_Field, M),
-    Field1 = maps:to_list(Field),
-    Field2 = lists:keysort(1, Field1),
-    V1 = lists:map(fun ({_K, V})-> V end, Field2),
-%%    V = maps:values(Field),
-    A = list_to_binary(V1),
-
-    {Flag, <<A/binary, Msg/binary, "\n">>}.
-
-
-new_field(A, -1)-> A;
-new_field(A, M)-> new_field(A#{{M,a} => <<"\n">>}, M-1).
+    {Flag, Msg, Raw_Field}= pl_battle:move(BattlePid, PlayerPid, Direction),
+    Field = list_to_binary(Raw_Field),
+    {Flag, <<Field/binary, Msg/binary, "\n">>}.
