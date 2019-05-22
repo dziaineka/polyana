@@ -13,7 +13,7 @@
 
 %% API
 -export([start_link/1]).
--export([stop/1, get_field/1, command/2, move/3, get_players/1]).
+-export([stop/1, command/2, move/3, get_players/1]).
 -export([gen_field/2, change_order/1]).
 %% gen_server callbacks
 -export([init/1,
@@ -122,9 +122,6 @@ handle_call({move, PlayerPid, Direction}, _From,
           New_Field = good_field(Field2, Size),
           {reply, {win, Win, New_Field}, State2}
       end
-%%      State2 = State#state{field = Field2, players = Players2, order = Order2},
-%%      New_Field = good_field(Field2, Size),
-%%      {reply, {Flag, Msg, New_Field}, State2}
   end;
 
 handle_call(get_players, _From,
