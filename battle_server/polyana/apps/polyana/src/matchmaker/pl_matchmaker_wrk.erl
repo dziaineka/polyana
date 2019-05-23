@@ -44,11 +44,18 @@ loop(#state{players_amount = Amount,
                     loop(State);
 
                 true ->
-                    NewDelta = Delta * Multiplier,
+                    case Delta * Multiplier of
+                        BigDelta when BigDelta > 1 ->
+                            loop(#state{players_amount = Amount,
+                                        rating_delta = 1, % max delta
+                                        expand_multiplier = Multiplier});
 
-                    loop(#state{players_amount = Amount,
-                                rating_delta = NewDelta,
-                                expand_multiplier = Multiplier})
+                        NewDelta ->
+                            loop(#state{players_amount = Amount,
+                                        rating_delta = NewDelta,
+                                        expand_multiplier = Multiplier})
+                    end
+
             end
     end.
 
