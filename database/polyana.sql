@@ -37,14 +37,16 @@ CREATE TABLE "transaction" (
   "amount" int
 );
 
-CREATE TYPE currency_type AS ENUM('silver',
-                                  'gold');
+CREATE TYPE currency_type AS ENUM('SILVER', 'GOLD');
 
 CREATE TABLE "currency" (
   "id" serial PRIMARY KEY,
   "type" currency_type NOT NULL,
   "rate" float NOT NULL
 );
+
+INSERT INTO currency (type, rate) VALUES ('GOLD', 1);
+INSERT INTO currency (type, rate) VALUES ('SILVER', 0.5);
 
 CREATE TYPE achievement_type AS ENUM('5_battles',
                                      '5_wins',
