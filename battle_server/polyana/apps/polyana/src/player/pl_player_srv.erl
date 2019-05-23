@@ -26,7 +26,7 @@ stop(PlayerSrv) ->
 -record(state, {
     reply_to_user,
     player_id = 0,
-    battle_pid = 0
+    battle_pid = undefined
 }).
 
 
@@ -115,11 +115,11 @@ player_authenticated(PlayerId) ->
     end.
 
 battle_active(Pid) ->
-    case is_pid(Pid) of
-        true ->
+    case Pid of
+        BattlePid when is_pid(BattlePid) ->
             true;
 
-        false ->
+        _ ->
             false
     end.
 
