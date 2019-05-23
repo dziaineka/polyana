@@ -115,12 +115,11 @@ handle_battle(PlayerSrv, Parameters) ->
 
     case string:to_integer(StrBid) of
         {error, _} ->
-            lager:warning("battle ~p", [StrBid]),
             <<"INVALID PARAMETERS\n">>;
 
         {Bid, Currency} when
                 (Currency == <<"GOLD">>) or (Currency == <<"SILVER">>) -> % прибить гвоздями - это так
-            lager:warning("battle ok ~p ~p", [Bid, Currency]),
+            lager:info("battle player ~p", [PlayerSrv]),
             Res = pl_player_srv:start_battle(PlayerSrv, {Currency, Bid}),
 
             case Res of

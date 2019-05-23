@@ -4,7 +4,7 @@
 
 %% API
 -export([stop/1, start_link/0, check_credentials/2, check_token/1,
-         get_rating/1]).
+         get_rating/1, check_enough_money/3]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -27,6 +27,8 @@ check_token(Token) ->
 get_rating(PlayerId) ->
     gen_server:call(?MODULE, {get_rating, PlayerId}).
 
+check_enough_money(PlayerId, Currency, Bid) ->
+    gen_server:call(?MODULE, {check_enough_money, PlayerId, Currency, Bid}).
 
 make_auth_query(Connection, Query, State) ->
     case epgsql:squery(Connection, Query) of
@@ -128,6 +130,30 @@ handle_call({get_rating, PlayerId},
         Unhandled ->
             lager:warning("Unexpected query result: ~p", [Unhandled]),
             {reply, error, State}
+    end;
+
+handle_call({check_enough_money, PlayerId, Currency, Bid},
+            _From,
+            State = #state{connection = Conn}) ->
+
+    Query = [
+        "SELECT * FROM money ",
+        "WHERE player_id = ", binary_to_list(PlayerId), " ",
+        "AND currency_id = (SELECT id FROM currency WHERE type = '",
+                            binary_to_list(Currency), "') "
+        "AND amount >= ", integer_to_list(Bid)
+    ],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, _Columns, []} ->
+            {reply, false, State};
+
+        {ok, _Columns, [_]} ->
+            {reply, true, State};
+
+        Unhandled ->
+            lager:warning("Unexpected query result: ~p", [Unhandled]),
+            {reply, false, State}
     end;
 
 handle_call(_Request, _From, State) ->

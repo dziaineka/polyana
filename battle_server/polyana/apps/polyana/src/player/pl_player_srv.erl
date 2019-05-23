@@ -68,18 +68,21 @@ handle_call({start_battle, {Currency, Bid}},
                    battle_pid = BattlePid} = State) ->
     AuthDone = player_authenticated(PlayerId),
     PlayerInBattle = battle_active(BattlePid),
+    EnoughMoney = pl_storage_srv:check_enough_money(PlayerId, Currency, Bid),
 
-    case {AuthDone, PlayerInBattle} of
-        {true, false} ->
-            check_enough_money(),
+    case {AuthDone, PlayerInBattle, EnoughMoney} of
+        {true, false, true} ->
             pl_queue_srv:add_player(self(), PlayerId, {Currency, Bid}),
             {reply, ok, State};
 
-        {true, true} ->
+        {false, _, _} ->
+            {reply, {error, <<"USER IS NOT AUTHENTICATED\n">>}, State};
+
+        {_, true, _} ->
             {reply, {error, <<"USER ALREADY IN THE BATTLE\n">>}, State};
 
-        {false, _} ->
-            {reply, {error, <<"USER IS NOT AUTHENTICATED\n">>}, State}
+        {_, _, false} ->
+            {reply, {error, <<"USER HAVE NOT ENOUGH MONEY\n">>}, State}
     end;
 
 handle_call(stop, _From, State) ->
@@ -122,6 +125,3 @@ battle_active(Pid) ->
         _ ->
             false
     end.
-
-check_enough_money() ->
-    lager:error("EMPLEMENT ME check_enough_money").
