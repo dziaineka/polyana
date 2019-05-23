@@ -4,7 +4,7 @@
 
 %% API
 -export([stop/1, start_link/0, check_credentials/2, check_token/1,
-         get_rating/1, check_enough_money/3]).
+         get_rating/1, check_enough_money/3, exchange_currency/3]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -30,55 +30,8 @@ get_rating(PlayerId) ->
 check_enough_money(PlayerId, Currency, Bid) ->
     gen_server:call(?MODULE, {check_enough_money, PlayerId, Currency, Bid}).
 
-make_auth_query(Connection, Query, State) ->
-    case epgsql:squery(Connection, Query) of
-        {ok, _Columns, []} ->
-            {reply, error, State};
-
-        {ok, _Columns, [Player]} ->
-            PlayerId = element(1, Player),
-            update_token(Connection, PlayerId),
-            {reply, {ok, PlayerId}, State};
-
-        Unhandled ->
-            lager:warning("Unexpected query result: ~p", [Unhandled]),
-            {reply, error, State}
-    end.
-
-update_token(Connection, PlayerId) ->
-    Query = ["select token from player where id = ", PlayerId,
-             " and token_expiration >= now()"],
-
-    case epgsql:squery(Connection, Query) of
-        {ok, _Columns, []} ->
-            create_token(Connection, PlayerId);
-
-        {ok, _Columns, _} ->
-            extend_token_lifetime(Connection, PlayerId)
-    end.
-
-get_new_token() ->
-    quickrand:seed(),
-    uuid:uuid_to_string(uuid:get_v4_urandom()).
-
-create_token(Connection, PlayerId) ->
-    Query = [
-        "UPDATE player ",
-        "SET token = '", get_new_token(), "', ",
-        "token_expiration = timezone('UTC'::text, now()) + interval '1 hour'",
-        "WHERE id = '", PlayerId, "'"
-    ],
-
-    {ok, _} = epgsql:squery(Connection, Query).
-
-extend_token_lifetime(Connection, PlayerId) ->
-    Query = [
-        "UPDATE player ",
-        "SET token_expiration = timezone('UTC'::text, now()) + interval '1 hour'",
-        "WHERE id = '", PlayerId, "'"
-    ],
-
-    {ok, _} = epgsql:squery(Connection, Query).
+exchange_currency(From, To, Amount) ->
+    gen_server:call(?MODULE, {exchange_currency, From, To, Amount}).
 
 
 init(_Args) ->
@@ -156,6 +109,15 @@ handle_call({check_enough_money, PlayerId, Currency, Bid},
             {reply, false, State}
     end;
 
+handle_call({exchange_currency, From, To, Amount},
+            _From,
+            State = #state{connection = Conn}) ->
+    {
+        reply,
+        (Amount * get_rate(Conn, From)) / get_rate(Conn, To),
+        State
+    };
+
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -171,3 +133,67 @@ terminate(_Reason, State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+make_auth_query(Connection, Query, State) ->
+    case epgsql:squery(Connection, Query) of
+        {ok, _Columns, []} ->
+            {reply, error, State};
+
+        {ok, _Columns, [Player]} ->
+            PlayerId = element(1, Player),
+            update_token(Connection, PlayerId),
+            {reply, {ok, PlayerId}, State};
+
+        Unhandled ->
+            lager:warning("Unexpected query result: ~p", [Unhandled]),
+            {reply, error, State}
+    end.
+
+update_token(Connection, PlayerId) ->
+    Query = ["select token from player where id = ", PlayerId,
+             " and token_expiration >= now()"],
+
+    case epgsql:squery(Connection, Query) of
+        {ok, _Columns, []} ->
+            create_token(Connection, PlayerId);
+
+        {ok, _Columns, _} ->
+            extend_token_lifetime(Connection, PlayerId)
+    end.
+
+get_new_token() ->
+    quickrand:seed(),
+    uuid:uuid_to_string(uuid:get_v4_urandom()).
+
+create_token(Connection, PlayerId) ->
+    Query = [
+        "UPDATE player ",
+        "SET token = '", get_new_token(), "', ",
+        "token_expiration = timezone('UTC'::text, now()) + interval '1 hour'",
+        "WHERE id = '", PlayerId, "'"
+    ],
+
+    {ok, _} = epgsql:squery(Connection, Query).
+
+extend_token_lifetime(Connection, PlayerId) ->
+    Query = [
+        "UPDATE player ",
+        "SET token_expiration = timezone('UTC'::text, now()) + interval '1 hour'",
+        "WHERE id = '", PlayerId, "'"
+    ],
+
+    {ok, _} = epgsql:squery(Connection, Query).
+
+get_rate(Connection, Currency) ->
+    Query = ["SELECT rate FROM currency WHERE type = '",
+             binary_to_list(Currency), "'"],
+
+    {ok, _Columns, [{Rate}]} = epgsql:squery(Connection, Query),
+
+    try binary_to_float(Rate) of
+        FloatRate ->
+            FloatRate
+    catch
+        _:_:_ ->
+            binary_to_integer(Rate)
+    end.

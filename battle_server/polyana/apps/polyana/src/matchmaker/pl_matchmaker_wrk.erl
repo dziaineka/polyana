@@ -112,8 +112,16 @@ get_game_parameters(Amount,
     end.
 
 get_min_bid({BattleCurrency, BattleBid}, {Currency, Bid}) ->
-    lager:error("IMPLEMENT ME get_min_bid"),
-    {BattleCurrency, 100}.
+    case BattleCurrency of
+        Currency ->
+            {BattleCurrency, min(BattleBid, Bid)};
+
+        _ ->
+            BidInBattleCurrency =
+                pl_storage_srv:exchange_currency(Currency, BattleCurrency, Bid),
+
+            {BattleCurrency, min(BattleBid, BidInBattleCurrency)}
+    end.
 
 notify_player(Pid) ->
     Pid ! matching_in_progress.
