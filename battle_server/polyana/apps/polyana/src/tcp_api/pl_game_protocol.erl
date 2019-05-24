@@ -77,6 +77,35 @@ loop(#state{socket = Socket,
             lager:info("close connection, ~p stop player", [Error]),
             pl_player_srv:stop(PlayerSrv),
             ok = Transport:close(Socket)
+    % отсюда идут мои изменения протокола
+    ;
+        {ok, <<"S", _/binary>>} ->
+            Raw_Reply = handle_command(start_game, PlayerPid),
+            State2= meadow_battle:multicast(Raw_Reply, PlayerPid, Transport, Socket, State),
+            loop(State2);
+        {ok, <<"STOP", _/binary>>} ->
+            meadow_battle:stop(PlayerPid),
+            ok = Transport:close(Socket);
+        {ok, <<"U", _/binary>>} ->
+            Raw_Reply = handle_command({get_battle_pid, {move, up}}, PlayerPid),
+            State2= meadow_battle:multicast(Raw_Reply, PlayerPid, Transport, Socket, State),
+            loop(State2);
+        {ok, <<"D", _/binary>>} ->
+            Raw_Reply = handle_command({get_battle_pid, {move, down}}, PlayerPid),
+            State2= meadow_battle:multicast(Raw_Reply, PlayerPid, Transport, Socket, State),
+            loop(State2);
+        {ok, <<"L", _/binary>>} ->
+            Raw_Reply = handle_command({get_battle_pid, {move, left}}, PlayerPid),
+            State2= meadow_battle:multicast(Raw_Reply, PlayerPid, Transport, Socket, State),
+            loop(State2);
+        {ok, <<"R", _/binary>>} ->
+            Raw_Reply = handle_command({get_battle_pid, {move, right}}, PlayerPid),
+            State2= meadow_battle:multicast(Raw_Reply, PlayerPid, Transport, Socket, State),
+            loop(State2)
+
+        %здесь они заканчиваются
+
+
     end.
 
 handle_ping() -> <<"PONG\n">>.

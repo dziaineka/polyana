@@ -21,6 +21,30 @@ stop(PlayerSrv) ->
     gen_server:call(PlayerSrv, stop).
 
 
+%% код для обработки коммандс телнета
+
+handle_command({get_name, Enc}, Pid)->
+    case meadow_players_srv:get_name(Pid) of
+        {ok, _} -> handle_command(Enc, Pid);
+        {error, not_auth} -> <<"Login first, please\n">>
+    end;
+handle_command({get_battle_pid, Enc}, Pid)->
+    case meadow_players_srv:get_battle_pid(Pid) of
+        {ok, BattlePid} -> handle_command(Enc, {BattlePid, Pid});
+        {error, not_game} -> <<"First, start game\n">>
+    end;
+handle_command(start_game, Pid)->
+    meadow_matchmaking:find_game(Pid);
+handle_command({move, Direction},{BattlePid, PlayerPid}) ->
+    {Flag, Msg, Raw_Field}= meadow_battle:move(BattlePid, PlayerPid, Direction),
+    Field = list_to_binary(Raw_Field),
+    {Flag, <<Field/binary, Msg/binary, "\n">>};
+handle_command(none, nono)->ok.
+
+
+%% конец кода для обработки команд стелнета
+
+
 %%% gen_server API
 
 -record(state, {
