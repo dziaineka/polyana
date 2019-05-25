@@ -1,7 +1,7 @@
 -module(pl_player_srv).
 -behavior(gen_server).
 
--export([start_link/1, auth/3, auth/2, start_battle/2, stop/1]).
+-export([start_link/1, auth/3, auth/2, start_battle/2, get_id/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
@@ -16,6 +16,10 @@ auth(PlayerSrv, Token) ->
 
 start_battle(PlayerSrv, {Currency, Bid}) ->
     gen_server:call(PlayerSrv, {start_battle, {Currency, Bid}}).
+
+get_id(PlayerSrv) ->
+    gen_server:call(PlayerSrv, get_id).
+
 
 stop(PlayerSrv) ->
     gen_server:call(PlayerSrv, stop).
@@ -82,8 +86,14 @@ handle_call({start_battle, {Currency, Bid}},
             {reply, {error, <<"USER ALREADY IN THE BATTLE\n">>}, State};
 
         {_, _, false} ->
-            {reply, {error, <<"USER HAVE NOT ENOUGH MONEY\n">>}, State}
+            {reply, {error, <<"YOU HAVE NOT ENOUGH MONEY\n">>}, State}
     end;
+
+handle_call(get_id,
+            _From,
+            #state{player_id = PlayerId} = State) ->
+    {reply, PlayerId, State};
+
 
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};

@@ -3,8 +3,14 @@
 -behaviour(gen_server).
 
 %% API
--export([stop/1, start_link/0, check_credentials/2, check_token/1,
-         get_rating/1, check_enough_money/3, exchange_currency/3]).
+-export([stop/1,
+         start_link/0,
+         check_credentials/2,
+         check_token/1,
+         get_rating/1,
+         check_enough_money/3,
+         exchange_currency/3,
+         save_battle/3]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -32,6 +38,9 @@ check_enough_money(PlayerId, Currency, Bid) ->
 
 exchange_currency(From, To, Amount) ->
     gen_server:call(?MODULE, {exchange_currency, From, To, Amount}).
+
+save_battle(Currency, Bid, Players) ->
+    gen_server:cast(?MODULE, {save_battle, Currency, Bid, Players}).
 
 
 init(_Args) ->
@@ -114,15 +123,33 @@ handle_call({exchange_currency, From, To, Amount},
             State = #state{connection = Conn}) ->
     {
         reply,
-        (Amount * get_rate(Conn, From)) / get_rate(Conn, To),
+        round((Amount * get_rate(Conn, From)) / get_rate(Conn, To)),
         State
     };
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
+
+handle_cast({save_battle, Currency, Bid, Players},
+            #state{connection = Conn} = State) ->
+    QueryPlayerIds = get_array_for_query(
+                            lists:map(fun pl_player_srv:get_id/1, Players)),
+
+    Query = ["INSERT INTO battle (currency_id, bid, participants) ",
+             "VALUES ((SELECT id FROM currency WHERE type = '",
+                            binary_to_list(Currency), "'),",
+                      integer_to_list(Bid), ", ",
+                      QueryPlayerIds, ")"],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1} ->
+            {noreply, State}
+    end;
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -133,6 +160,17 @@ terminate(_Reason, State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+get_array_for_query(Values) ->
+    ArrayForQuery = lists:foldl(
+        fun (Value, Array) ->
+            lists:append(Array, [binary_to_list(Value)])
+        end,
+        [],
+        Values
+    ),
+
+    lists:append([["'{"], lists:join(", ", ArrayForQuery), ["}'"]]).
 
 make_auth_query(Connection, Query, State) ->
     case epgsql:squery(Connection, Query) of
