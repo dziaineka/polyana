@@ -174,6 +174,20 @@ handle_call({save_event, battle_start, BattleId, PlayerId},
             {reply, {ok, EventId}, State}
     end;
 
+handle_call({save_event, battle_end, BattleId, PlayerId},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["INSERT INTO event (player_id, type, source) ",
+             "VALUES ('", binary_to_list(PlayerId), "', ",
+                      "'battle_end', ",
+                      "'", binary_to_list(BattleId), "') ",
+             "RETURNING id"],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1, _Columns, [{EventId}]} ->
+            {reply, {ok, EventId}, State}
+    end;
+
 handle_call({save_transaction, EventId, PlayerId, CurrencyType, Amount},
             _From,
             #state{connection = Conn} = State) ->
