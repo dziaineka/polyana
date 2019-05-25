@@ -70,7 +70,7 @@ CREATE TABLE "battle" (
   "id" serial PRIMARY KEY,
   "currency_id" int NOT NULL,
   "bid" int,
-  "winner" int NOT NULL,
+  "winner" int,
   "participants" int[] NOT NULL,
   "created" timestamp without time zone DEFAULT timezone('UTC'::text, now())
 );
