@@ -12,7 +12,8 @@
          exchange_currency/3,
          save_battle/3,
          save_event/3,
-         save_transaction/4]).
+         save_transaction/4,
+         save_winner/2]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -53,6 +54,9 @@ save_transaction(EventId, PlayerId, CurrencyType, Amount) ->
                               PlayerId,
                               CurrencyType,
                               Amount}).
+
+save_winner(BattleId, PlayerId) ->
+    gen_server:call(?MODULE, {save_winner, BattleId, PlayerId}).
 
 
 init(_Args) ->
@@ -140,7 +144,7 @@ handle_call({exchange_currency, From, To, Amount},
     };
 
 handle_call({save_battle, CurrencyType, Bid, Players},
-             _From,
+            _From,
             #state{connection = Conn} = State) ->
     QueryPlayerIds = get_array_for_query(Players),
 
@@ -157,7 +161,7 @@ handle_call({save_battle, CurrencyType, Bid, Players},
     end;
 
 handle_call({save_event, battle_start, BattleId, PlayerId},
-             _From,
+            _From,
             #state{connection = Conn} = State) ->
     Query = ["INSERT INTO event (player_id, type, source) ",
              "VALUES ('", binary_to_list(PlayerId), "', ",
@@ -171,7 +175,7 @@ handle_call({save_event, battle_start, BattleId, PlayerId},
     end;
 
 handle_call({save_transaction, EventId, PlayerId, CurrencyType, Amount},
-             _From,
+            _From,
             #state{connection = Conn} = State) ->
     Query = ["INSERT INTO transaction (event_id, player_id, currency_id, amount) ",
              "VALUES ('", binary_to_list(EventId), "', ",
@@ -185,6 +189,17 @@ handle_call({save_transaction, EventId, PlayerId, CurrencyType, Amount},
         {ok, 1, _Columns, [{TransactionId}]} ->
             ok = update_money_balance(Conn, PlayerId, CurrencyType, Amount),
             {reply, {ok, TransactionId}, State}
+    end;
+
+handle_call({save_winner, BattleId, PlayerId},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["UPDATE battle SET winner = ", binary_to_list(PlayerId),
+             " WHERE id = ", binary_to_list(BattleId)],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1} ->
+            {reply, ok, State}
     end;
 
 handle_call(_Request, _From, State) ->
