@@ -111,14 +111,14 @@ get_game_parameters(Amount,
             end
     end.
 
-get_min_bid({BattleCurrency, BattleBid}, {Currency, Bid}) ->
+get_min_bid({BattleCurrency, BattleBid}, {CurrencyType, Bid}) ->
     case BattleCurrency of
-        Currency ->
+        CurrencyType ->
             {BattleCurrency, min(BattleBid, Bid)};
 
         _ ->
             BidInBattleCurrency =
-                pl_storage_srv:exchange_currency(Currency, BattleCurrency, Bid),
+                pl_storage_srv:exchange_currency(CurrencyType, BattleCurrency, Bid),
 
             {BattleCurrency, min(BattleBid, BidInBattleCurrency)}
     end.
