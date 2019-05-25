@@ -1,8 +1,10 @@
 from django.contrib.postgres.fields import JSONField
 from django.db import models
+from django.contrib.auth.models import User
 
 
 class Player(models.Model): 
+    user_id = models.ForeignKey(User, on_delete=models.CASCADE, default=None)
     nickname = models.CharField(max_length=200, null=False, blank=False, unique=True)
     password = models.CharField(max_length=200, null=False, blank=False)
     token = models.CharField(max_length=200, null=True, blank=True, unique=True)
