@@ -10,7 +10,8 @@
          get_rating/1,
          check_enough_money/3,
          exchange_currency/3,
-         save_battle/3]).
+         save_battle/3,
+         save_event/3]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -40,7 +41,10 @@ exchange_currency(From, To, Amount) ->
     gen_server:call(?MODULE, {exchange_currency, From, To, Amount}).
 
 save_battle(Currency, Bid, Players) ->
-    gen_server:cast(?MODULE, {save_battle, Currency, Bid, Players}).
+    gen_server:call(?MODULE, {save_battle, Currency, Bid, Players}).
+
+save_event(EventType, SourceId, PlayerPid) ->
+    gen_server:call(?MODULE, {save_event, EventType, SourceId, PlayerPid}).
 
 
 init(_Args) ->
@@ -127,11 +131,8 @@ handle_call({exchange_currency, From, To, Amount},
         State
     };
 
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
-
-
-handle_cast({save_battle, Currency, Bid, Players},
+handle_call({save_battle, Currency, Bid, Players},
+             _From,
             #state{connection = Conn} = State) ->
     QueryPlayerIds = get_array_for_query(
                             lists:map(fun pl_player_srv:get_id/1, Players)),
@@ -140,12 +141,33 @@ handle_cast({save_battle, Currency, Bid, Players},
              "VALUES ((SELECT id FROM currency WHERE type = '",
                             binary_to_list(Currency), "'),",
                       integer_to_list(Bid), ", ",
-                      QueryPlayerIds, ")"],
+                      QueryPlayerIds, ") ",
+             "RETURNING id"],
 
     case epgsql:squery(Conn, Query) of
-        {ok, 1} ->
-            {noreply, State}
+        {ok, 1, _Columns, [{BattleId}]} ->
+            {reply, {ok, BattleId}, State}
     end;
+
+handle_call({save_event, battle_start, BattleId, PlayerPid},
+             _From,
+            #state{connection = Conn} = State) ->
+    PlayerId = pl_player_srv:get_id(PlayerPid),
+
+    Query = ["INSERT INTO event (player_id, type, source) ",
+             "VALUES ('", binary_to_list(PlayerId), "', ",
+                      "'battle_start', ",
+                      "'", binary_to_list(BattleId), "') ",
+             "RETURNING id"],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1, _Columns, [{EventId}]} ->
+            {reply, {ok, EventId}, State}
+    end;
+
+handle_call(_Request, _From, State) ->
+    {reply, ok, State}.
+
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
