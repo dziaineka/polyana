@@ -21,15 +21,6 @@ class ApiStatsForm(forms.Form):
 
 
 class RegistrationForm(UserCreationForm):
-    # first_name = forms.CharField(max_length=30, required=False)
-    # last_name = forms.CharField(max_length=30, required=False)
-    # email = forms.EmailField(max_length=254)
-
     class Meta:
         model = User
         fields = ('username', 'password1', 'password2')
-
-    # def __init__(self, *args, **kwargs):
-    #     super().__init__(*args, **kwargs)
-    #     for visible in self.visible_fields():
-    #         visible.field.widget.attrs['class'] = 'form-control'
