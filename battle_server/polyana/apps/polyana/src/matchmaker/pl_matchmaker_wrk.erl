@@ -3,8 +3,6 @@
 -export([start_link/0]).
 -export([init/0]).
 
--export([create_room/1]).
-
 -record(state, {
     players_amount = 2,
     rating_delta = 0.01,
@@ -113,14 +111,14 @@ get_game_parameters(Amount,
             end
     end.
 
-get_min_bid({BattleCurrency, BattleBid}, {Currency, Bid}) ->
+get_min_bid({BattleCurrency, BattleBid}, {CurrencyType, Bid}) ->
     case BattleCurrency of
-        Currency ->
+        CurrencyType ->
             {BattleCurrency, min(BattleBid, Bid)};
 
         _ ->
             BidInBattleCurrency =
-                pl_storage_srv:exchange_currency(Currency, BattleCurrency, Bid),
+                pl_storage_srv:exchange_currency(CurrencyType, BattleCurrency, Bid),
 
             {BattleCurrency, min(BattleBid, BidInBattleCurrency)}
     end.
@@ -136,11 +134,11 @@ remove_from_queue(Players) ->
         Players
     ).
 
-%%create_room(Parameters) ->
-%%lager:info("create room ~p", [Parameters]),
-create_room(Match) ->
-    Players = maps:keys(Match),
-    Match2 = lists:foldl(fun(E, Acc) -> maps:remove(E, Acc) end, Match, Players),
-    {ok, Pid} = supervisor:start_child(pl_battle_sup, [Players]),
-    lager:info("new game started pid:~p", [Pid]),
-    {{multi, <<"New Game started\n">>}, Match2}. %данная строка не нужна
+create_room(Parameters) ->
+    lager:info("create room ~p", [Parameters]),
+    {ok, _Pid} = supervisor:start_child(pl_battle_sup, [Parameters]).
+% create_room(Match) ->
+%     Players = maps:keys(Match),
+%     Match2 = lists:foldl(fun(E, Acc) -> maps:remove(E, Acc) end, Match, Players),
+%     lager:info("new game started pid:~p", [Pid]),
+%     {{multi, <<"New Game started\n">>}, Match2}. %данная строка не нужна
