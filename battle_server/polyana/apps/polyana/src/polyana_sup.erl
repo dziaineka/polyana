@@ -24,14 +24,14 @@ init([]) ->
             type => supervisor,
             modules => [pl_player_sup]
         },
-%%        #{
-%%            id => pl_storage_sup,
-%%            start => {pl_storage_sup, start_link, []},
-%%            restart => permanent,
-%%            shutdown => 2000,
-%%            type => supervisor,
-%%            modules => [pl_storage_sup]
-%%        },
+       #{
+           id => pl_storage_sup,
+           start => {pl_storage_sup, start_link, []},
+           restart => permanent,
+           shutdown => 2000,
+           type => supervisor,
+           modules => [pl_storage_sup]
+       },
         #{
             id => pl_matching_sup,
             start => {pl_matching_sup, start_link, []},
@@ -40,13 +40,13 @@ init([]) ->
             type => supervisor,
             modules => [pl_matching_sup]
         },
-        #{id => pl_battle_sup,
+        #{
+            id => pl_battle_sup,
             start => {pl_battle_sup, start_link, []},
-            restart =>
-%%            temporary,
-            permanent,
+            restart => permanent,
             shutdown => 2000,
             type => supervisor,
-            modules => [pl_battle_sup]}
+            modules => [pl_battle_sup]
+        }
     ],
     {ok, {SupervisorSpecification, ChildSpecifications}}.
