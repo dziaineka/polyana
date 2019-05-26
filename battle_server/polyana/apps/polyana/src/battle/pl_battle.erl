@@ -14,8 +14,6 @@
 %% API
 -export([start_link/1]).
 -export([stop/1, move/3]).
--export([gen_field/2, change_order/1, set_map/3]).
--export([send_messages/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -28,10 +26,18 @@
 -define(SERVER, ?MODULE).
 
 -record(state, {
-    players_positions,
+    players_info,
     battle_field,
     battle_field_size,
-    turn_order
+    turn_order,
+    bid,
+    currency_type
+}).
+
+-record(player_info, {
+    position,
+    mark,
+    currency_type
 }).
 
 %%%===================================================================
@@ -65,45 +71,46 @@ start_link(Players) ->
 %%--------------------------------------------------------------------
 
 init({CurrencyType, Bid, PlayersWithCurrencies}) ->
-    {Players, _Currencies} = lists:unzip(PlayersWithCurrencies),
-    FieldHeight = 2,
-    FieldWidth = 2,
+    {Players, Currencies} = lists:unzip(PlayersWithCurrencies),
+    {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
+    {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
 
-    Values = [{{0, 0}, <<"A">>},
-              {{FieldHeight, FieldWidth}, <<"B">>},
-              {{FieldHeight, 0}, <<"C">>},
-              {{0, FieldWidth}, <<"D">>}],
+    send_battle_pid(Players),
+    Order = shuffle(Players),
+    PlayersInfo = get_players_info(Players, Currencies),
+    Field = create_field(PlayersInfo),
+    StringField = field_to_msg(Field, {FieldHeight, FieldWidth}),
+    save_start_game_data(CurrencyType, Bid, PlayersWithCurrencies),
+    invite_players_to_game(PlayersInfo, Order, StringField),
 
+    State = #state{players_info = PlayersInfo,
+                   battle_field = Field,
+                   battle_field_size = {FieldHeight, FieldWidth},
+                   turn_order = Order,
+                   bid = Bid,
+                   currency_type = CurrencyType},
+
+    {ok, State}.
+
+send_battle_pid(Players) ->
     lists:foreach(
         fun(PlayerSrv) ->
             pl_player_srv:add_battle_pid(PlayerSrv, self())
         end,
         Players
-    ),
+    ).
 
-    Order = shuffle(Players),
-    PlayersPos = set_map(Players, Values, #{}),
-    Field = gen_field(FieldHeight, FieldWidth),
+create_field(PlayersInfo) ->
+    {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
+    {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
 
-    Field2 = maps:fold(
-        fun (_K, {Position, Mark},Acc) ->
+    maps:fold(
+        fun (_PlayerPid, #player_info{position = Position, mark = Mark}, Acc) ->
             maps:update(Position, Mark, Acc)
         end,
-        Field,
-        PlayersPos
-    ),
-
-    Field3 = field_to_msg(Field2, {FieldHeight, FieldWidth}),
-    send_messages(PlayersPos, Order, Field3),
-
-    save_start_game_data(CurrencyType, Bid, PlayersWithCurrencies),
-
-    State = #state{players_positions = PlayersPos,
-                   battle_field = Field2,
-                   battle_field_size = {FieldHeight, FieldWidth},
-                   turn_order = Order},
-
-    {ok, State}.
+        gen_empty_field(FieldHeight, FieldWidth),
+        PlayersInfo
+    ).
 
 move(BattlePid, PlayerPid, Direction) ->
     {Flag, Msg, Raw_Field, Pids} =
@@ -131,11 +138,9 @@ stop(BattleSrv)->
 
 multicast(Reply, Players) ->
     case Players of
-        {Active, PlayersDict} ->
+        {Active, PlayersList} ->
             Active ! {message, <<Reply/binary, "It's your turn", "\n">>},
-
-            PlayersList = maps:keys(PlayersDict),
-            multicast(Reply, PlayersList);
+            multicast(Reply, lists:delete(Active, PlayersList));
 
         PlayersList ->
             lists:foreach(
@@ -176,25 +181,21 @@ save_start_game_data(CurrencyType, Bid, PlayersWithCurrencies) ->
         PlayersWithCurrencies
     ).
 
-send_messages(Players, [First|_Order], Raw_Field) ->
+invite_players_to_game(PlayersInfo, [First|_Order], Raw_Field) ->
+    Players = maps:keys(PlayersInfo),
     Field = list_to_binary(Raw_Field),
-    PlayersPid = maps:keys(Players),
 
     lists:foreach(
-        fun
-            (PlayerPid) when PlayerPid == First ->
-                {_, Mark} = maps:get(First, Players),
-                PlayerPid ! {message,
-                            <<Field/binary, "Now turn player ",
-                            Mark/binary, "\n", "It's your turn", "\n">>};
-            (PlayerPid) ->
-                {_, Mark} = maps:get(First, Players),
+        fun (PlayerPid) ->
+            #player_info{mark = Mark} = maps:get(First, PlayersInfo),
 
-                PlayerPid ! {message, <<Field/binary, "Now turn player ",
-                                        Mark/binary, "\n">>}
+            multicast(<<Field/binary, "Now turn player ", Mark/binary, "\n">>,
+                      [PlayerPid])
         end,
-        PlayersPid
-    ).
+        Players
+    ),
+
+    multicast(<<"It's your turn", "\n">>, [First]).
 
 
 %%--------------------------------------------------------------------
@@ -209,50 +210,60 @@ handle_call({move, PlayerPid, Direction},
             _From,
             #state{battle_field = Field,
                    battle_field_size = Size,
-                   players_positions = PlayersPos,
+                   players_info = PlayersInfo,
                    turn_order = Order} = State) ->
-    {Flag, Msg, Field2, NewPlayersPos, Order2} =
-        move(PlayerPid, Direction, Field, PlayersPos, Order),
-
-    PlayersList = maps:keys(PlayersPos),
+    {Flag, Msg, Field2, NewPlayersInfo, Order2} =
+        move(PlayerPid, Direction, Field, PlayersInfo, Order),
 
     case Flag of
         nok ->
-            {reply, {Flag, Msg, field_to_msg(Field, Size), NewPlayersPos}, State};
+            {reply, {Flag, Msg, field_to_msg(Field, Size), NewPlayersInfo}, State};
 
         single ->
-            [First| _Others]=Order,
+            [First| _Others] = Order,
             {reply, {Flag, Msg, field_to_msg(Field, Size), First}, State};
 
         multi ->
-            Order3 = lose_condition(Field2, NewPlayersPos, Order2, Order2),
-            NewBattleField = field_to_msg(Field2, Size),
+            Order3 = lose_condition(Field2, NewPlayersInfo, Order2, Order2),
+            NewField = field_to_msg(Field2, Size),
+            NewPlayersList = maps:keys(NewPlayersInfo),
 
-            case win_condition(Order3, NewPlayersPos) of
+            case win_condition(Order3, NewPlayersInfo) of
                 next ->
                     State2 = State#state{battle_field = Field2,
-                                         players_positions = NewPlayersPos,
+                                         players_info = NewPlayersInfo,
                                          turn_order = Order3},
 
-                    [Next_player|_] = Order3,
-                    {_, Mark} = maps:get(Next_player, NewPlayersPos),
+                    [NextPlayer | _] = Order3,
+
+                    #player_info{mark = Mark} =
+                        maps:get(NextPlayer, NewPlayersInfo),
+
                     Msg2 = <<Msg/binary, " player ", Mark/binary>>,
 
                     {
                         reply,
-                        {Flag, Msg2, NewBattleField, {Next_player,
-                                                      NewPlayersPos}},
+                        {
+                            Flag,
+                            Msg2,
+                            NewField,
+                            {NextPlayer, NewPlayersList}
+                        },
                         State2
                     };
 
-                WinMessage ->
+                {_WinnerPid, WinMessage} ->
+                    % save_end_game_data(WinnerPid,
+                    %                    maps:keys(NewPlayersInfo),
+                    %                    ),
+
                     State2 = State#state{battle_field = Field2,
-                                         players_positions = NewPlayersPos,
+                                         players_info = NewPlayersInfo,
                                          turn_order = Order3},
 
                     {
                         reply,
-                        {win, WinMessage, NewBattleField, PlayersList},
+                        {win, WinMessage, NewField, NewPlayersList},
                         State2
                     }
             end
@@ -282,89 +293,72 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-move(PlayerPid, Direction, Field, PlayersPos,
+move(PlayerPid, Direction, Field, PlayersInfo,
             [Active|_Passive] = Order) when Active == PlayerPid ->
-    Player = maps:get(Active,PlayersPos),
-    in_move(Direction, Field, Player, PlayersPos, Order);
+    PlayerInfo = maps:get(Active, PlayersInfo),
+    {Y, X} = PlayerInfo#player_info.position,
+
+    case Direction of
+        up ->
+            in_move(Field, {Y - 1, X}, PlayersInfo, Order);
+
+        down ->
+            in_move(Field, {Y + 1, X}, PlayersInfo, Order);
+
+        left ->
+            in_move(Field, {Y, X - 1}, PlayersInfo, Order);
+
+        right ->
+            in_move(Field, {Y, X + 1}, PlayersInfo, Order)
+    end;
 
 move(PlayerPid, _Direction, Field, _PlayersPos,
             [Active|_Passive]=Order) when Active=/= PlayerPid ->
     {nok, <<"Not your turn">>, Field, PlayerPid, Order}.
 
 
-in_move(up, Field, {{Y, X}, Mark}, PlayersPos, [Active|_Passive] = Order) ->
-    case maps:find({Y-1, X}, Field) of
-        {ok,<<"O">>} ->
-            Field2 = Field#{{Y, X} => <<"X">>, {Y-1,X} => Mark},
-            PlayersPos2 = maps:update(Active, {{Y-1,X}, Mark}, PlayersPos),
-            {multi,<<"Next move">>, Field2, PlayersPos2, change_order(Order)};
+in_move(Field, NewPosition, PlayersInfo, [Active | Passive]) ->
+    PlayerInfo = maps:get(Active, PlayersInfo),
 
-        {ok,_} ->
-            {single,<<"WRONG SPACE">>, Field, PlayersPos, Order};
+    case maps:find(NewPosition, Field) of
+        {ok, <<"O">>} ->
+            Field2 = Field#{PlayerInfo#player_info.position => <<"X">>,
+                            NewPosition => PlayerInfo#player_info.mark},
 
-        error ->
-            {single,<<"Border">>, Field, PlayersPos, Order}
-    end;
+            NewPlayerInfo = maps:update(
+                Active,
+                PlayerInfo#player_info{position = NewPosition},
+                PlayersInfo),
 
-in_move(down, Field, {{Y, X}, Mark}, PlayersPos, [Active|_Passive]=Order) ->
-    case maps:find({Y+1, X}, Field) of
-        {ok,<<"O">>} ->
-            Field2 = Field#{{Y, X} => <<"X">>, {Y+1,X} => Mark},
-            PlayersPos2 = maps:update(Active, {{Y+1,X}, Mark}, PlayersPos),
-            {multi,<<"Next move">>, Field2, PlayersPos2, change_order(Order)};
+            {
+                multi,
+                <<"Next turn">>,
+                Field2,
+                NewPlayerInfo,
+                change_order([Active | Passive])
+            };
 
-        {ok,_} ->
-            {single,<<"WRONG SPACE">>, Field, PlayersPos, Order};
-
-        error ->
-            {single,<<"Border">>, Field, PlayersPos, Order}
-    end;
-
-in_move(left, Field, {{Y, X}, Mark}, PlayersPos, [Active|_Passive]=Order) ->
-    case maps:find({Y, X-1}, Field) of
-        {ok,<<"O">>} ->
-            Field2 = Field#{{Y, X} => <<"X">>, {Y,X-1} => Mark},
-            PlayersPos2 = maps:update(Active, {{Y,X-1}, Mark}, PlayersPos),
-            {multi,<<"Next move">>, Field2, PlayersPos2, change_order(Order)};
-
-        {ok,_} ->
-            {single,<<"WRONG SPACE">>, Field, PlayersPos, Order};
-
-        error ->
-            {single, <<"Border">>, Field, PlayersPos, Order}
-    end;
-
-in_move(right, Field, {{Y, X}, Mark}, PlayersPos, [Active|_Passive]=Order) ->
-    case maps:find({Y, X+1}, Field) of
-        {ok,<<"O">>} ->
-            Field2 = Field#{{Y, X} => <<"X">>, {Y,X+1} => Mark},
-            PlayersPos2 = maps:update(Active, {{Y,X+1}, Mark}, PlayersPos),
-            {multi,<<"Next move">>, Field2, PlayersPos2, change_order(Order)};
-
-        {ok,_} ->
-            {single, <<"WRONG SPACE">>, Field, PlayersPos, Order};
-
-        error ->
-            {single,<<"Border">>, Field, PlayersPos, Order}
+        _ ->
+            {single, <<"NO WAY">>, Field, [Active], [Active | Passive]}
     end.
 
 
-gen_field(FieldHeight, FieldWidth) ->
-    gen_field(FieldHeight, FieldWidth, #{}, FieldHeight, FieldWidth).
+gen_empty_field(FieldHeight, FieldWidth) ->
+    gen_empty_field(FieldHeight, FieldWidth, #{}, FieldHeight, FieldWidth).
 
 
-gen_field(_M, -1, Acc, _M_orig, _N_orig) ->
+gen_empty_field(_M, -1, Acc, _M_orig, _N_orig) ->
     Acc;
 
-gen_field(-1, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
-    gen_field(FieldHeight_orig, FieldWidth-1,
+gen_empty_field(-1, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
+    gen_empty_field(FieldHeight_orig, FieldWidth-1,
               Acc,
               FieldHeight_orig, FieldWidth_orig);
 
-gen_field(FieldHeight, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
+gen_empty_field(FieldHeight, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
     Acc2 = Acc#{{FieldHeight,FieldWidth}=> <<"O">>},
 
-    gen_field(FieldHeight-1, FieldWidth,
+    gen_empty_field(FieldHeight-1, FieldWidth,
               Acc2,
               FieldHeight_orig, FieldWidth_orig).
 
@@ -374,35 +368,37 @@ change_order([Active|Passive])->
     Order.
 
 
-lose_condition(_Field, _Players, _, Order) when length(Order) == 1 ->
+lose_condition(_Field, _PlayersInfo, _, Order) when length(Order) == 1 ->
     Order;
 
-lose_condition(_Field, _Players, [], Order) ->
+lose_condition(_Field, _PlayersInfo, [], Order) ->
     Order;
 
-lose_condition(Field, Players, [Active|Others], Order)->
-    {Position, Mark}= maps:get(Active, Players),
+lose_condition(Field, PlayersInfo, [Active|Others], Order)->
+    #player_info{position = Position, mark = Mark} =
+        maps:get(Active, PlayersInfo),
+
     Directions = [up, down, left, right],
 
     case find_direction(Field, Position, Directions) of
         ok ->
-            lose_condition(Field, Players, Others, Order);
+            lose_condition(Field, PlayersInfo, Others, Order);
 
         lose ->
             lager:info("Player ~p lose", [Mark]),
             %добавить команду для изменения ретинга проигравшего игрока
             Order2 = lists:delete(Active, Order),
-            lose_condition(Field, Players, Others, Order2)
+            lose_condition(Field, PlayersInfo, Others, Order2)
     end.
 
 
-win_condition(Order, Players) when length(Order) == 1 ->
-    [Player] = Order,
-    {_Position, Mark} = maps:get(Player, Players),
+win_condition(Order, PlayersInfo) when length(Order) == 1 ->
+    [PlayerPid] = Order,
+    #player_info{mark = Mark} = maps:get(PlayerPid, PlayersInfo),
   %%добавить команду для изменения ретинга выигревшего игрока
-    <<Mark/binary, " wins. Congratulations!">>;
+    {PlayerPid, <<Mark/binary, " wins. Congratulations!">>};
 
-win_condition(_Order, _Players) ->
+win_condition(_Order, _PlayersInfo) ->
     next.
 
 
@@ -477,8 +473,33 @@ shuffle(List)->
     [X || {_, X}<- lists:sort(Random_list)].
 
 
-set_map([], _Values, MapAcc) ->
-    MapAcc;
+get_players_info(Players, Currencies) ->
+    get_players_info(Players, Currencies, #{}).
 
-set_map([Player | Players], [Value | Values], MapAcc) ->
-    set_map(Players, Values, MapAcc#{Player => Value}).
+get_players_info([], _Currencies, PlayersInfo) ->
+    PlayersInfo;
+
+get_players_info([Player | Players],
+                 [Currency | Currencies],
+                 PlayersInfo) ->
+    PlayerInfo = #player_info{
+                        currency_type = Currency,
+                        position = get_initial_field_pos(length(Players) + 1),
+                        mark = get_mark(length(Players) + 1)},
+
+    get_players_info(Players, Currencies, PlayersInfo#{Player => PlayerInfo}).
+
+get_initial_field_pos(Number) ->
+    {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
+    {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
+
+    Positions = [{0, 0},
+                 {FieldHeight, FieldWidth},
+                 {FieldHeight, 0},
+                 {0, FieldWidth}],
+
+    lists:nth(Number, Positions).
+
+get_mark(Number) ->
+    Marks = [<<"A">>, <<"B">>, <<"C">>, <<"D">>],
+    lists:nth(Number, Marks).
