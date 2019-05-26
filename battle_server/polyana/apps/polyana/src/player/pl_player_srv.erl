@@ -5,6 +5,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-export([move/2, add_battle_pid/2]).
+
 start_link(ReplyFun) ->
     gen_server:start_link(?MODULE, ReplyFun, []).
 
@@ -20,9 +22,14 @@ start_battle(PlayerSrv, {Currency, Bid}) ->
 get_id(PlayerSrv) ->
     gen_server:call(PlayerSrv, get_id).
 
-
 stop(PlayerSrv) ->
     gen_server:call(PlayerSrv, stop).
+
+add_battle_pid(PlayerSrv, BattleSrv) ->
+    gen_server:cast(PlayerSrv, {add_battle_pid, BattleSrv}).
+
+move(Direction, Pid) ->
+    gen_server:call(Pid, {move, Direction}).
 
 
 %%% gen_server API
@@ -30,7 +37,7 @@ stop(PlayerSrv) ->
 -record(state, {
     reply_to_user,
     player_id = 0,
-    battle_pid = undefined
+    battle_pid = none
 }).
 
 
@@ -98,12 +105,34 @@ handle_call(get_id,
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
 
+handle_call({move, Direction}, _Form, #state{battle_pid = BattlePid}=State)->
+    case BattlePid of
+        none -> self() ! {message, <<"First, start game\n">>},
+            {reply, ok, State};
+        _ ->
+            Reply = pl_battle:move(BattlePid, self(), Direction),
+            {reply, Reply, State}
+    end;
+
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
+
+handle_cast({add_battle_pid, BattleSrv}, State) ->
+    State2 = State#state{battle_pid =  BattleSrv},
+    {noreply, State2};
 
 handle_cast(_Request, State) ->
     {noreply, State}.
 
+
+handle_info({message, Msg}, #state{reply_to_user = ReplyFun} = State) ->
+    lager:info("message info ~p from pid ~p", [Msg, self()]),
+    ReplyFun(Msg),
+    {noreply, State};
+
+handle_info(exit_room, State) ->
+    lager:info("close room pid ~p", [self()]),
+    {noreply, State#state{battle_pid = none}};
 
 handle_info(matching_in_progress, #state{reply_to_user = ReplyFun} = State) ->
     ReplyFun(<<"Searching the opponent...\n">>),
@@ -111,6 +140,7 @@ handle_info(matching_in_progress, #state{reply_to_user = ReplyFun} = State) ->
 
 handle_info(_Request, State) ->
     {noreply, State}.
+
 
 terminate(_Reason, _State) ->
     ok.

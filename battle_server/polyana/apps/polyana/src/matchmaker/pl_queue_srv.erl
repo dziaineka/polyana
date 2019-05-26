@@ -8,6 +8,7 @@
          terminate/2, code_change/3]).
 
 -record(state, {dummy}).
+
 stop(Name) ->
     gen_server:call(Name, stop).
 
@@ -25,7 +26,6 @@ init(_Args) ->
     lager:info("queue manager is starting"),
     ets:new(?MODULE, [named_table]),
     {ok, #state{dummy=1}}.
-
 
 handle_call(stop, _From, State) ->
     {stop, normal, stopped, State};

@@ -67,16 +67,36 @@ loop(#state{socket = Socket,
             Transport:send(Socket, Reply),
             loop(State);
 
-        {ok, UnknownData} ->
-            Reply = <<"INVALID QUERY\n">>,
-            lager:warning("Invalid Query:~p", [UnknownData]),
-            Transport:send(Socket, Reply),
+        {ok, <<"STOP", _/binary>>} ->
+            pl_player_srv:stop(PlayerSrv),
+            ok = Transport:close(Socket);
+
+        {ok, <<"u", _/binary>>} ->
+            pl_player_srv:move(up, PlayerSrv),
+            loop(State);
+
+        {ok, <<"d", _/binary>>} ->
+            pl_player_srv:move(down, PlayerSrv),
+            loop(State);
+
+        {ok, <<"l", _/binary>>} ->
+            pl_player_srv:move(left, PlayerSrv),
+            loop(State);
+
+        {ok, <<"r", _/binary>>} ->
+            pl_player_srv:move(right, PlayerSrv),
             loop(State);
 
         {error, Error} ->
             lager:info("close connection, ~p stop player", [Error]),
             pl_player_srv:stop(PlayerSrv),
-            ok = Transport:close(Socket)
+            ok = Transport:close(Socket);
+
+        {ok, UnknownData} ->
+            Reply = <<"INVALID QUERY\n">>,
+            lager:warning("Invalid Query:~p", [UnknownData]),
+            Transport:send(Socket, Reply),
+            loop(State)
     end.
 
 handle_ping() -> <<"PONG\n">>.
@@ -131,6 +151,3 @@ handle_battle(PlayerSrv, Parameters) ->
             lager:warning("unhandled ~p", [StrBid]),
             <<"INVALID PARAMETERS\n">>
     end.
-
-
-
