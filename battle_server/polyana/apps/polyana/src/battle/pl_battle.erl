@@ -66,13 +66,13 @@ start_link(Players) ->
 
 init({_Currency, _Bid, PlayersWithCurrencies}) ->
     {Players, _Currencies} = lists:unzip(PlayersWithCurrencies),
-    M = 2,
-    N = 2,
+    FieldHeight = 2,
+    FieldWidth = 2,
 
-    Values = [{{0,0}, <<"A">>},
-              {{M,N}, <<"B">>},
-              {{M,0}, <<"C">>},
-              {{0, N}, <<"D">>}],
+    Values = [{{0, 0}, <<"A">>},
+              {{FieldHeight, FieldWidth}, <<"B">>},
+              {{FieldHeight, 0}, <<"C">>},
+              {{0, FieldWidth}, <<"D">>}],
 
     lists:foreach(
         fun(PlayerSrv) ->
@@ -83,7 +83,7 @@ init({_Currency, _Bid, PlayersWithCurrencies}) ->
 
     Order = shuffle(Players),
     Players2 = set_map(Players, Values, #{}),
-    Field = gen_field(M, N),
+    Field = gen_field(FieldHeight, FieldWidth),
 
     Field2 = maps:fold(
         fun (_K, {Position, Mark},Acc) ->
@@ -93,11 +93,11 @@ init({_Currency, _Bid, PlayersWithCurrencies}) ->
         Players2
     ),
 
-    Field3 = field_to_msg(Field2, {M,N}),
+    Field3 = field_to_msg(Field2, {FieldHeight, FieldWidth}),
     send_messages(Players2, Order, Field3),
 
     State = #state{players = Players2,
-                   size = {M, N},
+                   size = {FieldHeight, FieldWidth},
                    order = Order,
                    field = Field2},
     {ok, State}.
@@ -207,14 +207,14 @@ handle_call({move, PlayerPid, Direction},
                                          players = Players2,
                                          order = Order3},
 
-                    New_Field = field_to_msg(Field2, Size),
+                    NewField = field_to_msg(Field2, Size),
                     [Next_player|_] = Order3,
                     {_, Mark} = maps:get(Next_player, Players2),
                     Msg2 = <<Msg/binary, " player ", Mark/binary>>,
 
                     {
                         reply,
-                        {Flag, Msg2, New_Field, {Next_player, Players2}},
+                        {Flag, Msg2, NewField, {Next_player, Players2}},
                         State2
                     };
 
@@ -223,8 +223,8 @@ handle_call({move, PlayerPid, Direction},
                                          players = Players2,
                                          order = Order3},
 
-                    New_Field = field_to_msg(Field2, Size),
-                    {reply, {win, Win, New_Field, PlayersList}, State2}
+                    NewField = field_to_msg(Field2, Size),
+                    {reply, {win, Win, NewField, PlayersList}, State2}
             end
     end;
 
@@ -319,19 +319,24 @@ in_move(right, Field, {{Y, X}, Mark}, Players, [Active|_Passive]=Order) ->
     end.
 
 
-gen_field(M, N) ->
-    gen_field(M, N, #{}, M, N).
+gen_field(FieldHeight, FieldWidth) ->
+    gen_field(FieldHeight, FieldWidth, #{}, FieldHeight, FieldWidth).
 
 
 gen_field(_M, -1, Acc, _M_orig, _N_orig) ->
     Acc;
 
-gen_field(-1, N, Acc, M_orig, N_orig) ->
-    gen_field(M_orig, N-1, Acc, M_orig, N_orig);
+gen_field(-1, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
+    gen_field(FieldHeight_orig, FieldWidth-1,
+              Acc,
+              FieldHeight_orig, FieldWidth_orig);
 
-gen_field(M, N, Acc, M_orig, N_orig) ->
-    Acc2 = Acc#{{M,N}=> <<"O">>},
-    gen_field(M-1, N, Acc2, M_orig, N_orig).
+gen_field(FieldHeight, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
+    Acc2 = Acc#{{FieldHeight,FieldWidth}=> <<"O">>},
+
+    gen_field(FieldHeight-1, FieldWidth,
+              Acc2,
+              FieldHeight_orig, FieldWidth_orig).
 
 
 change_order([Active|Passive])->
