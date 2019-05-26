@@ -66,8 +66,8 @@ start_link(Players) ->
 %% @end
 %%--------------------------------------------------------------------
 
-init(Players) ->
-%%  {ok,{M,N}} = application:get_env(polyana, field_size),
+init({_Currency, _Bid, PlayersWithCurrencies}) ->
+    {Players, _Currencies} = lists:unzip(PlayersWithCurrencies),
     M = 2,
     N = 2,
     Values = [{{0,0}, <<"A">>}, {{M,N}, <<"B">>}, {{M,0}, <<"C">>},{{0, N}, <<"D">>}],
