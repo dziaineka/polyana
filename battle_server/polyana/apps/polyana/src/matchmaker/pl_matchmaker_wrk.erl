@@ -137,8 +137,3 @@ remove_from_queue(Players) ->
 create_room(Parameters) ->
     lager:info("create room ~p", [Parameters]),
     {ok, _Pid} = supervisor:start_child(pl_battle_sup, [Parameters]).
-% create_room(Match) ->
-%     Players = maps:keys(Match),
-%     Match2 = lists:foldl(fun(E, Acc) -> maps:remove(E, Acc) end, Match, Players),
-%     lager:info("new game started pid:~p", [Pid]),
-%     {{multi, <<"New Game started\n">>}, Match2}. %данная строка не нужна

@@ -118,7 +118,8 @@ handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
 handle_cast({add_battle_pid, BattleSrv}, State) ->
-    State2 = State#state{battle_pid =  BattleSrv},
+    erlang:monitor(process, BattleSrv),
+    State2 = State#state{battle_pid = BattleSrv},
     {noreply, State2};
 
 handle_cast(_Request, State) ->
@@ -126,17 +127,22 @@ handle_cast(_Request, State) ->
 
 
 handle_info({message, Msg}, #state{reply_to_user = ReplyFun} = State) ->
-    lager:info("message info ~p from pid ~p", [Msg, self()]),
+    lager:info("Message info ~p from pid ~p", [Msg, self()]),
     ReplyFun(Msg),
     {noreply, State};
 
 handle_info(exit_room, State) ->
-    lager:info("close room pid ~p", [self()]),
+    lager:info("Close room pid ~p", [self()]),
     {noreply, State#state{battle_pid = none}};
 
 handle_info(matching_in_progress, #state{reply_to_user = ReplyFun} = State) ->
     ReplyFun(<<"Searching the opponent...\n">>),
     {noreply, State};
+
+handle_info({'DOWN', _Ref, process, Pid, Info}, State) ->
+    lager:info("Room down ~p ~p", [Pid, Info]),
+    NewState = State#state{battle_pid = none},
+    {noreply, NewState};
 
 handle_info(_Request, State) ->
     {noreply, State}.
