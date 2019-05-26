@@ -1,14 +1,11 @@
 -module(pl_player_srv).
 -behavior(gen_server).
 
--export([start_link/1, auth/3, auth/2, start_battle/2, stop/1]).
+-export([start_link/1, auth/3, auth/2, start_battle/2, get_id/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
-%% мой код
--export([my_start/1, move/2, add_battle_pid/2]).
-
-%% конец моего кода
+-export([move/2, add_battle_pid/2]).
 
 start_link(ReplyFun) ->
     gen_server:start_link(?MODULE, ReplyFun, []).
@@ -22,24 +19,17 @@ auth(PlayerSrv, Token) ->
 start_battle(PlayerSrv, {Currency, Bid}) ->
     gen_server:call(PlayerSrv, {start_battle, {Currency, Bid}}).
 
+get_id(PlayerSrv) ->
+    gen_server:call(PlayerSrv, get_id).
+
 stop(PlayerSrv) ->
     gen_server:call(PlayerSrv, stop).
-
-%мой код
 
 add_battle_pid(PlayerSrv, BattleSrv) ->
     gen_server:cast(PlayerSrv, {add_battle_pid, BattleSrv}).
 
-
-%% код для обработки коммандс телнета
-
-my_start(Pid) ->
-    gen_server:call(Pid, my_start).  %для теста
-
 move(Direction, Pid) ->
     gen_server:call(Pid, {move, Direction}).
-
-%% конец кода для обработки команд стелнета
 
 
 %%% gen_server API
@@ -103,17 +93,17 @@ handle_call({start_battle, {Currency, Bid}},
             {reply, {error, <<"USER ALREADY IN THE BATTLE\n">>}, State};
 
         {_, _, false} ->
-            {reply, {error, <<"USER HAVE NOT ENOUGH MONEY\n">>}, State}
+            {reply, {error, <<"YOU HAVE NOT ENOUGH MONEY\n">>}, State}
     end;
+
+handle_call(get_id,
+            _From,
+            #state{player_id = PlayerId} = State) ->
+    {reply, PlayerId, State};
+
 
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
-
-%% мой код
-
-handle_call(my_start, _Form, State)->
-    Reply = pl_queue_srv:find_game(self()),
-    {reply, Reply, State};
 
 handle_call({move, Direction}, _Form, #state{battle_pid = BattlePid}=State)->
     case BattlePid of
@@ -124,19 +114,12 @@ handle_call({move, Direction}, _Form, #state{battle_pid = BattlePid}=State)->
             {reply, Reply, State}
     end;
 
-
-
-%% конец мой кода
-
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
-
-%% мой код
 
 handle_cast({add_battle_pid, BattleSrv}, State) ->
     State2 = State#state{battle_pid =  BattleSrv},
     {noreply, State2};
-%% конец мой кода
 
 handle_cast(_Request, State) ->
     {noreply, State}.
@@ -146,6 +129,7 @@ handle_info({message, Msg}, #state{reply_to_user = ReplyFun} = State) ->
     lager:info("message info ~p from pid ~p", [Msg, self()]),
     ReplyFun(Msg),
     {noreply, State};
+
 handle_info(exit_room, State) ->
     lager:info("close room pid ~p", [self()]),
     {noreply, State#state{battle_pid = none}};
@@ -156,6 +140,7 @@ handle_info(matching_in_progress, #state{reply_to_user = ReplyFun} = State) ->
 
 handle_info(_Request, State) ->
     {noreply, State}.
+
 
 terminate(_Reason, _State) ->
     ok.
