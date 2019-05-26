@@ -194,6 +194,7 @@ get_rate(Connection, Currency) ->
         FloatRate ->
             FloatRate
     catch
-        _:_:_ ->
+%%        _:_:_ ->
+        _:_ -> % надо убрать для работы с эрлангом версии 20 м выше
             binary_to_integer(Rate)
     end.

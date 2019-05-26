@@ -5,6 +5,11 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+%% мой код
+-export([my_start/1, move/2, add_battle_pid/2]).
+
+%% конец моего кода
+
 start_link(ReplyFun) ->
     gen_server:start_link(?MODULE, ReplyFun, []).
 
@@ -20,27 +25,19 @@ start_battle(PlayerSrv, {Currency, Bid}) ->
 stop(PlayerSrv) ->
     gen_server:call(PlayerSrv, stop).
 
+%мой код
+
+add_battle_pid(PlayerSrv, BattleSrv) ->
+    gen_server:cast(PlayerSrv, {add_battle_pid, BattleSrv}).
+
 
 %% код для обработки коммандс телнета
 
-handle_command({get_name, Enc}, Pid)->
-    case meadow_players_srv:get_name(Pid) of
-        {ok, _} -> handle_command(Enc, Pid);
-        {error, not_auth} -> <<"Login first, please\n">>
-    end;
-handle_command({get_battle_pid, Enc}, Pid)->
-    case meadow_players_srv:get_battle_pid(Pid) of
-        {ok, BattlePid} -> handle_command(Enc, {BattlePid, Pid});
-        {error, not_game} -> <<"First, start game\n">>
-    end;
-handle_command(start_game, Pid)->
-    meadow_matchmaking:find_game(Pid);
-handle_command({move, Direction},{BattlePid, PlayerPid}) ->
-    {Flag, Msg, Raw_Field}= meadow_battle:move(BattlePid, PlayerPid, Direction),
-    Field = list_to_binary(Raw_Field),
-    {Flag, <<Field/binary, Msg/binary, "\n">>};
-handle_command(none, nono)->ok.
+my_start(Pid) ->
+    gen_server:call(Pid, my_start).  %для теста
 
+move(Direction, Pid) ->
+    gen_server:call(Pid, {move, Direction}).
 
 %% конец кода для обработки команд стелнета
 
@@ -50,7 +47,7 @@ handle_command(none, nono)->ok.
 -record(state, {
     reply_to_user,
     player_id = 0,
-    battle_pid = undefined
+    battle_pid = none
 }).
 
 
@@ -112,12 +109,46 @@ handle_call({start_battle, {Currency, Bid}},
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
 
+%% мой код
+
+handle_call(my_start, _Form, State)->
+    Reply = pl_queue_srv:find_game(self()),
+    {reply, Reply, State};
+
+handle_call({move, Direction}, _Form, #state{battle_pid = BattlePid}=State)->
+    case BattlePid of
+        none -> self() ! {message, <<"First, start game\n">>},
+            {reply, ok, State};
+        _ ->
+            Reply = pl_battle:move(BattlePid, self(), Direction),
+            {reply, Reply, State}
+    end;
+
+
+
+%% конец мой кода
+
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
+
+%% мой код
+
+handle_cast({add_battle_pid, BattleSrv}, State) ->
+    State2 = State#state{battle_pid =  BattleSrv},
+    {noreply, State2};
+%% конец мой кода
 
 handle_cast(_Request, State) ->
     {noreply, State}.
 
+
+handle_info({message, Msg}, #state{reply_to_user = ReplyFun} = State) ->
+    lager:info("message info ~p from pid ~p", [Msg, self()]),
+    ReplyFun(Msg),
+    {noreply, State};
+handle_info(exit_room, State) ->
+    lager:info("close room pid ~p", [self()]),
+    {noreply, State#state{battle_pid = none}};
 
 handle_info(matching_in_progress, #state{reply_to_user = ReplyFun} = State) ->
     ReplyFun(<<"Searching the opponent...\n">>),

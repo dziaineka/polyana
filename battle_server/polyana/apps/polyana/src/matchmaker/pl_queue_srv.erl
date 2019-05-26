@@ -36,7 +36,7 @@ init(_Args) ->
             , match = #{} % убрать
     }}.
 
-%% убрать, код для текста
+%% убрать, код из handle_call для теста
 
 handle_call({find_game, PlayerSrv}, _From, #state{match = Match}=State) ->
     {Reply, Match2} =  in_find_game(PlayerSrv, Match),
@@ -88,21 +88,16 @@ code_change(_OldVsn, State, _Extra) ->
 
 in_find_game(PlayerSrv, Match) ->
     case maps:find(PlayerSrv, Match) of
-        {ok, _} -> {<<"Please, Waiting\n">>, Match};
+        {ok, _} ->
+             {<<"Please, Waiting\n">>, Match};
         error -> Match2 = maps:put(PlayerSrv, none, Match),
             {<<"Searching Game\n">>, Match2}
     end.
 
 check_condition(_Reply, Match) when map_size(Match) == 3 ->
-    Players = maps:keys(Match),
-    Match2 = lists:foldl(fun(E, Acc) -> maps:remove(E, Acc) end, Match, Players),
-    {ok, Pid} = supervisor:start_child(meadow_battle_sup, [Players]),
-%%  lists:foreach(fun(PlayerSrv) -> meadow_players_srv:add_battle_pid(PlayerSrv, Pid) end, Players),
-%%  ok = meadow_battle:command(new, Pid),
-    lager:info("new game started pid:~p", [Pid]),
-    {{battle, <<"New Game started\n">>}, Match2};
+    pl_matchmaker_wrk:create_room(Match);
 check_condition(Reply, Match) ->
-    {{ok, Reply}, Match}.
+    {{single, Reply}, Match}.
 
 
 %% убрать, для теста
