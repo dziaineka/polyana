@@ -13,7 +13,10 @@
          save_battle/3,
          save_event/3,
          save_transaction/4,
-         save_winner/2]).
+         save_winner/2,
+         add_played_game/1,
+         update_winrate/1,
+         add_won_game/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -57,6 +60,15 @@ save_transaction(EventId, PlayerId, CurrencyType, Amount) ->
 
 save_winner(BattleId, PlayerId) ->
     gen_server:call(?MODULE, {save_winner, BattleId, PlayerId}).
+
+add_played_game(PlayerId) ->
+    gen_server:cast(?MODULE, {add_played_game, PlayerId}).
+
+update_winrate(PlayerId) ->
+    gen_server:cast(?MODULE, {update_winrate, PlayerId}).
+
+add_won_game(PlayerId) ->
+    gen_server:cast(?MODULE, {add_won_game, PlayerId}).
 
 
 init(_Args) ->
@@ -220,6 +232,54 @@ handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
 
+handle_cast({add_played_game, PlayerId}, #state{connection = Conn} = State) ->
+    Query = ["UPDATE player ",
+             "SET played_battles = (",
+             "(SELECT played_battles ",
+                "FROM player ",
+                "WHERE id = ", binary_to_list(PlayerId), ") + 1) ",
+             "WHERE id = ", binary_to_list(PlayerId)],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1} ->
+            {noreply, State}
+    end;
+
+handle_cast({add_won_game, PlayerId}, #state{connection = Conn} = State) ->
+    Query = ["UPDATE player ",
+             "SET battles_won = (",
+             "(SELECT battles_won ",
+                 "FROM player ",
+                 "WHERE id = ", binary_to_list(PlayerId), ") + 1) ",
+             "WHERE id = ", binary_to_list(PlayerId)],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1} ->
+            {noreply, State}
+    end;
+
+handle_cast({update_winrate, PlayerId}, #state{connection = Conn} = State) ->
+    case get_won_battles(Conn, PlayerId) of
+        0 ->
+            {noreply, State};
+
+        _Amount ->
+            Query = ["UPDATE player ",
+                    "SET winrate = (",
+                    "(SELECT cast(battles_won AS float) "
+                        "FROM player ",
+                        "WHERE id = ", binary_to_list(PlayerId),") / ",
+                    "(SELECT played_battles ",
+                        "FROM player ",
+                        "WHERE id = ", binary_to_list(PlayerId), ")) ",
+                    "WHERE id = ", binary_to_list(PlayerId)],
+
+            case epgsql:squery(Conn, Query) of
+                {ok, 1} ->
+                    {noreply, State}
+            end
+    end;
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -234,6 +294,15 @@ terminate(_Reason, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+
+get_won_battles(Connection, PlayerId) ->
+    Query = ["select battles_won from player where id = ",
+            binary_to_list(PlayerId)],
+
+    case epgsql:squery(Connection, Query) of
+        {ok, _Columns, [{BinGames}]} ->
+            binary_to_integer(BinGames)
+    end.
 
 update_money_balance(Connection, PlayerId, CurrencyType, Amount) ->
     Query = [
