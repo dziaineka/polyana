@@ -131,10 +131,6 @@ handle_info({message, Msg}, #state{reply_to_user = ReplyFun} = State) ->
     ReplyFun(Msg),
     {noreply, State};
 
-handle_info(exit_room, State) ->
-    lager:info("Close room pid ~p", [self()]),
-    {noreply, State#state{battle_pid = none}};
-
 handle_info(matching_in_progress, #state{reply_to_user = ReplyFun} = State) ->
     ReplyFun(<<"Searching the opponent...\n">>),
     {noreply, State};
