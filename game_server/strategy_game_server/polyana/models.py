@@ -1,8 +1,10 @@
 from django.contrib.postgres.fields import JSONField
 from django.db import models
+from django.contrib.auth.models import User
 
 
 class Player(models.Model): 
+    user_id = models.ForeignKey(User, on_delete=models.CASCADE, default=None)
     nickname = models.CharField(max_length=200, null=False, blank=False, unique=True)
     password = models.CharField(max_length=200, null=False, blank=False)
     token = models.CharField(max_length=200, null=True, blank=True, unique=True)
@@ -30,4 +32,47 @@ class Event(models.Model):
     event_type = models.CharField(max_length=200, null=False, blank=False, choices=EVENT_TYPE, db_column='type')
     source = models.IntegerField(null=True, blank=False)
     payload = JSONField(default=dict)
+    created = models.DateTimeField(auto_now_add=True)
+
+
+class Currency(models.Model):
+    CURRENCY_TYPE = (
+        ('GOLD', 'GOLD'),
+        ('SILVER', 'SILVER'),
+    )
+
+    currency_type = models.CharField(max_length=200, null=False, blank=False, choices=CURRENCY_TYPE, db_column='type')
+    rate = models.FloatField(null=False)
+
+
+class Transaction(models.Model):
+    event_id = models.ForeignKey(Event, on_delete=models.DO_NOTHING)
+    player_id = models.ForeignKey(Player, on_delete=models.DO_NOTHING)
+    currency_id = models.ForeignKey(Currency, on_delete=models.DO_NOTHING)
+    amount = models.IntegerField(null=False) # TODO
+
+
+class Achievement(models.Model):
+    ACHIEVEMENT_TYPE = (
+        ('5_battles', '5 battles'),
+        ('5_wins', '5 wins'),
+        ('first_win', 'First win'),
+    )
+
+    achievement_type = models.CharField(max_length=200, null=False, blank=False, choices=ACHIEVEMENT_TYPE, db_column='type')
+    player_id = models.ForeignKey(Player, on_delete=models.CASCADE)
+    created = models.DateTimeField(auto_now_add=True)
+
+
+class Money(models.Model):
+    player_id = models.ForeignKey(Player, on_delete=models.CASCADE)
+    currency_id = models.ForeignKey(Currency, on_delete=models.CASCADE)
+    amount = models.IntegerField(null=False) # TODO
+
+
+class Battle(models.Model):
+    currency_id = models.ForeignKey(Currency, on_delete=models.DO_NOTHING)
+    bid = models.IntegerField(null=True)
+    winner = models.ForeignKey(Player, on_delete=models.DO_NOTHING, related_name='winner')
+    participants = models.ManyToManyField(Player, related_name='participants')
     created = models.DateTimeField(auto_now_add=True)

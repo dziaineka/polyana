@@ -1,0 +1,24 @@
+{% extends 'polyana/base.html' %}
+
+{% block content %}
+{% if user.is_authenticated and user == player.user_id %}
+  <h1>My account</h2>
+  <br>
+  <h4>Welcome, {{ user.username }}!</h4>
+  <br>
+
+  <h4>Your info:</h4>
+  <br>
+  <h6>played_battles: {{ player.played_battles }}</h6>
+  <h6>battles_won: {{ player.battles_won }}</h6>
+  <h6>winrate: {{ player.winrate }}</h6>
+  <br>
+  <br>
+  <h4>Leaderboard:</h4>
+  {% for leader in leaders %}
+  {{ leader.nickname }}: {{ leader.winrate }} / {{ leader.played_battles }}<br>
+  {% endfor %}
+
+  <br>
+{% endif %}
+{% endblock %}

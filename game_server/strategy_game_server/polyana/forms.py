@@ -1,4 +1,6 @@
 from django import forms
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import User
 from .models import Player
 
 
@@ -16,3 +18,9 @@ class ApiLoginForm(forms.Form):
 class ApiStatsForm(forms.Form):
     nickname = forms.fields.CharField()
     token = forms.fields.CharField()
+
+
+class RegistrationForm(UserCreationForm):
+    class Meta:
+        model = User
+        fields = ('username', 'password1', 'password2')
