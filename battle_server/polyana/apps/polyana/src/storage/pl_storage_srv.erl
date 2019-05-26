@@ -3,8 +3,17 @@
 -behaviour(gen_server).
 
 %% API
--export([stop/1, start_link/0, check_credentials/2, check_token/1,
-         get_rating/1, check_enough_money/3, exchange_currency/3]).
+-export([stop/1,
+         start_link/0,
+         check_credentials/2,
+         check_token/1,
+         get_rating/1,
+         check_enough_money/3,
+         exchange_currency/3,
+         save_battle/3,
+         save_event/3,
+         save_transaction/4,
+         save_winner/2]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -27,11 +36,27 @@ check_token(Token) ->
 get_rating(PlayerId) ->
     gen_server:call(?MODULE, {get_rating, PlayerId}).
 
-check_enough_money(PlayerId, Currency, Bid) ->
-    gen_server:call(?MODULE, {check_enough_money, PlayerId, Currency, Bid}).
+check_enough_money(PlayerId, CurrencyType, Bid) ->
+    gen_server:call(?MODULE, {check_enough_money, PlayerId, CurrencyType, Bid}).
 
 exchange_currency(From, To, Amount) ->
     gen_server:call(?MODULE, {exchange_currency, From, To, Amount}).
+
+save_battle(CurrencyType, Bid, Players) ->
+    gen_server:call(?MODULE, {save_battle, CurrencyType, Bid, Players}).
+
+save_event(EventType, SourceId, PlayerId) ->
+    gen_server:call(?MODULE, {save_event, EventType, SourceId, PlayerId}).
+
+save_transaction(EventId, PlayerId, CurrencyType, Amount) ->
+    gen_server:call(?MODULE, {save_transaction,
+                              EventId,
+                              PlayerId,
+                              CurrencyType,
+                              Amount}).
+
+save_winner(BattleId, PlayerId) ->
+    gen_server:call(?MODULE, {save_winner, BattleId, PlayerId}).
 
 
 init(_Args) ->
@@ -85,7 +110,7 @@ handle_call({get_rating, PlayerId},
             {reply, error, State}
     end;
 
-handle_call({check_enough_money, PlayerId, Currency, Bid},
+handle_call({check_enough_money, PlayerId, CurrencyType, Bid},
             _From,
             State = #state{connection = Conn}) ->
 
@@ -93,7 +118,7 @@ handle_call({check_enough_money, PlayerId, Currency, Bid},
         "SELECT * FROM money ",
         "WHERE player_id = ", binary_to_list(PlayerId), " ",
         "AND currency_id = (SELECT id FROM currency WHERE type = '",
-                            binary_to_list(Currency), "') "
+                            binary_to_list(CurrencyType), "') "
         "AND amount >= ", integer_to_list(Bid)
     ],
 
@@ -114,15 +139,90 @@ handle_call({exchange_currency, From, To, Amount},
             State = #state{connection = Conn}) ->
     {
         reply,
-        (Amount * get_rate(Conn, From)) / get_rate(Conn, To),
+        round((Amount * get_rate(Conn, From)) / get_rate(Conn, To)),
         State
     };
+
+handle_call({save_battle, CurrencyType, Bid, Players},
+            _From,
+            #state{connection = Conn} = State) ->
+    QueryPlayerIds = get_array_for_query(Players),
+
+    Query = ["INSERT INTO battle (currency_id, bid, participants) ",
+             "VALUES ((SELECT id FROM currency WHERE type = '",
+                            binary_to_list(CurrencyType), "'), ",
+                      integer_to_list(Bid), ", ",
+                      QueryPlayerIds, ") ",
+             "RETURNING id"],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1, _Columns, [{BattleId}]} ->
+            {reply, {ok, BattleId}, State}
+    end;
+
+handle_call({save_event, battle_start, BattleId, PlayerId},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["INSERT INTO event (player_id, type, source) ",
+             "VALUES ('", binary_to_list(PlayerId), "', ",
+                      "'battle_start', ",
+                      "'", binary_to_list(BattleId), "') ",
+             "RETURNING id"],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1, _Columns, [{EventId}]} ->
+            {reply, {ok, EventId}, State}
+    end;
+
+handle_call({save_event, battle_end, BattleId, PlayerId},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["INSERT INTO event (player_id, type, source) ",
+             "VALUES ('", binary_to_list(PlayerId), "', ",
+                      "'battle_end', ",
+                      "'", binary_to_list(BattleId), "') ",
+             "RETURNING id"],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1, _Columns, [{EventId}]} ->
+            {reply, {ok, EventId}, State}
+    end;
+
+handle_call({save_transaction, EventId, PlayerId, CurrencyType, Amount},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["INSERT INTO transaction (event_id, player_id, currency_id, amount) ",
+             "VALUES ('", binary_to_list(EventId), "', ",
+                      "'", binary_to_list(PlayerId), "', ",
+                      "(SELECT id FROM currency WHERE type = '",
+                            binary_to_list(CurrencyType), "'), ",
+                      integer_to_list(Amount), ") ",
+             "RETURNING id"],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1, _Columns, [{TransactionId}]} ->
+            ok = update_money_balance(Conn, PlayerId, CurrencyType, Amount),
+            {reply, {ok, TransactionId}, State}
+    end;
+
+handle_call({save_winner, BattleId, PlayerId},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["UPDATE battle SET winner = ", binary_to_list(PlayerId),
+             " WHERE id = ", binary_to_list(BattleId)],
+
+    case epgsql:squery(Conn, Query) of
+        {ok, 1} ->
+            {reply, ok, State}
+    end;
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -133,6 +233,36 @@ terminate(_Reason, State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+
+update_money_balance(Connection, PlayerId, CurrencyType, Amount) ->
+    Query = [
+        "UPDATE money ",
+        "SET amount = ((SELECT amount FROM money ",
+                       "WHERE player_id = ", binary_to_list(PlayerId),
+                       " AND currency_id = ",
+                            "(SELECT id FROM currency WHERE type = '",
+                                binary_to_list(CurrencyType), "')) ",
+                            " + ", integer_to_list(Amount), ") ",
+        "WHERE player_id = ", binary_to_list(PlayerId),
+        " AND currency_id = ", "(SELECT id FROM currency WHERE type = '",
+                                            binary_to_list(CurrencyType), "')"],
+
+    case epgsql:squery(Connection, Query) of
+        {ok, 1} ->
+            ok
+    end.
+
+get_array_for_query(Values) ->
+    ArrayForQuery = lists:foldl(
+        fun (Value, Array) ->
+            lists:append(Array, [binary_to_list(Value)])
+        end,
+        [],
+        Values
+    ),
+
+    lists:append([["'{"], lists:join(", ", ArrayForQuery), ["}'"]]).
 
 make_auth_query(Connection, Query, State) ->
     case epgsql:squery(Connection, Query) of
@@ -194,7 +324,6 @@ get_rate(Connection, Currency) ->
         FloatRate ->
             FloatRate
     catch
-%%        _:_:_ ->
-        _:_ -> % надо убрать для работы с эрлангом версии 20 м выше
+        _:_:_ ->
             binary_to_integer(Rate)
     end.
