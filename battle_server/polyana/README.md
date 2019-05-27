@@ -1,9 +1,19 @@
-polyana
+боевой сервер игры polyana
 =====
 
-An OTP application
+API
+---
 
-Build
------
+    PING - ping
+    AUTH login password - аутентификация на боевом сервере
+    AUTH token - аутентификация на боевом сервере
+    STOP - уйти с сервера
+    BATTLE sum currency_type - начать бой со ставкой в размере не выше sum и
+        видом валюты currency_type. Доступно два вида валюты: 'GOLD' и 'SILVER'.
 
-    $ rebar3 compile
+    Команды в бою:
+
+    u - шаг вверх
+    d - шаг вниз
+    l - шаг налево
+    r - шаг направо
