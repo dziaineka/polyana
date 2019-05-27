@@ -115,7 +115,7 @@ handle_call({get_rating, PlayerId},
             {reply, error, State};
 
         {ok, _Columns, [{BinRating}]} ->
-            {reply, {ok, binary_to_integer(BinRating)}, State};
+            {reply, {ok, binary_to_number(BinRating)}, State};
 
         Unhandled ->
             lager:warning("Unexpected query result: ~p", [Unhandled]),
@@ -388,11 +388,12 @@ get_rate(Connection, Currency) ->
              binary_to_list(Currency), "'"],
 
     {ok, _Columns, [{Rate}]} = epgsql:squery(Connection, Query),
+    binary_to_number(Rate).
 
-    try binary_to_float(Rate) of
-        FloatRate ->
-            FloatRate
-    catch
-        _:_:_ ->
-            binary_to_integer(Rate)
+binary_to_number(Binary) ->
+    StrNumber = binary_to_list(Binary),
+
+    case string:to_float(StrNumber) of
+        {error,no_float} -> list_to_integer(StrNumber);
+        {Float,_Rest} -> Float
     end.
