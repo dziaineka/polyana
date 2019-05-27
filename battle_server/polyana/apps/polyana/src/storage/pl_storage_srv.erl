@@ -91,15 +91,15 @@ handle_call(stop, _From, State) ->
 handle_call({check_credentials, Login, Pass},
             _From,
             #state{connection = Conn} = State) ->
-    Query = ["select * from player where nickname = '", Login,
-             "' and password = '", Pass, "'"],
+    Query = ["select * from polyana_player where nickname = '", Login,
+             "' and password = md5('", Pass, "')"],
 
     make_auth_query(Conn, Query, State);
 
 handle_call({check_token, Token},
             _From,
             #state{connection = Conn} = State) ->
-    Query = ["select * from player where token = '", Token,
+    Query = ["select * from polyana_player where token = '", Token,
              "' and token_expiration >= now()"],
 
     make_auth_query(Conn, Query, State);
@@ -107,7 +107,7 @@ handle_call({check_token, Token},
 handle_call({get_rating, PlayerId},
             _From,
             State = #state{connection = Conn}) ->
-    Query = ["select winrate from player where id = ",
+    Query = ["select winrate from polyana_player where id = ",
              binary_to_list(PlayerId)],
 
     case epgsql:squery(Conn, Query) of
@@ -127,9 +127,9 @@ handle_call({check_enough_money, PlayerId, CurrencyType, Bid},
             State = #state{connection = Conn}) ->
 
     Query = [
-        "SELECT * FROM money ",
+        "SELECT * FROM polyana_money ",
         "WHERE player_id = ", binary_to_list(PlayerId), " ",
-        "AND currency_id = (SELECT id FROM currency WHERE type = '",
+        "AND currency_id = (SELECT id FROM polyana_currency WHERE type = '",
                             binary_to_list(CurrencyType), "') "
         "AND amount >= ", integer_to_list(Bid)
     ],
@@ -160,14 +160,12 @@ handle_call({save_battle, CurrencyType, Bid, Players},
             #state{connection = Conn} = State) ->
     QueryPlayerIds = get_array_for_query(Players),
 
-    Query = ["INSERT INTO battle (currency_id, bid, participants) ",
-             "VALUES ((SELECT id FROM currency WHERE type = '",
-                            binary_to_list(CurrencyType), "'), ",
-                      integer_to_list(Bid), ", ",
-                      QueryPlayerIds, ") ",
-             "RETURNING id"],
+    Query = ["INSERT INTO polyana_battle (currency_id, bid, participants, created) ",
+             "VALUES ((SELECT id FROM polyana_currency WHERE type = $1), $2, $3, $4) RETURNING id"],
 
-    case epgsql:squery(Conn, Query) of
+    Parameters = [binary_to_list(CurrencyType), Bid, QueryPlayerIds, erlang:timestamp()],
+
+    case epgsql:equery(Conn, Query, Parameters) of
         {ok, 1, _Columns, [{BattleId}]} ->
             {reply, {ok, BattleId}, State}
     end;
@@ -175,27 +173,31 @@ handle_call({save_battle, CurrencyType, Bid, Players},
 handle_call({save_event, battle_start, BattleId, PlayerId},
             _From,
             #state{connection = Conn} = State) ->
-    Query = ["INSERT INTO event (player_id, type, source) ",
-             "VALUES ('", binary_to_list(PlayerId), "', ",
-                      "'battle_start', ",
-                      "'", binary_to_list(BattleId), "') ",
-             "RETURNING id"],
 
-    case epgsql:squery(Conn, Query) of
+    Query = ["INSERT INTO polyana_event (player_id, type, source, created) ",
+             "VALUES ($1, $2, $3, $4) RETURNING id"],
+
+    Parameters = [binary_to_integer(PlayerId), "battle_start", BattleId, erlang:timestamp()],
+
+    lager:warning("battle_start ~p", [Parameters]),
+
+    case epgsql:equery(Conn, Query, Parameters) of
         {ok, 1, _Columns, [{EventId}]} ->
-            {reply, {ok, EventId}, State}
+            lager:warning("battle_start ok ~p", [EventId]),
+            {reply, {ok, EventId}, State};
+
+        Res -> lager:warning("battle_start fail ~p", [Res])
     end;
 
 handle_call({save_event, battle_end, BattleId, PlayerId},
             _From,
             #state{connection = Conn} = State) ->
-    Query = ["INSERT INTO event (player_id, type, source) ",
-             "VALUES ('", binary_to_list(PlayerId), "', ",
-                      "'battle_end', ",
-                      "'", binary_to_list(BattleId), "') ",
-             "RETURNING id"],
+    Query = ["INSERT INTO polyana_event (player_id, type, source, created) ",
+             "VALUES ($1, $2, $3, $4) RETURNING id"],
 
-    case epgsql:squery(Conn, Query) of
+    Parameters = [binary_to_integer(PlayerId), "battle_end", BattleId, erlang:timestamp()],
+
+    case epgsql:equery(Conn, Query, Parameters) of
         {ok, 1, _Columns, [{EventId}]} ->
             {reply, {ok, EventId}, State}
     end;
@@ -203,15 +205,12 @@ handle_call({save_event, battle_end, BattleId, PlayerId},
 handle_call({save_transaction, EventId, PlayerId, CurrencyType, Amount},
             _From,
             #state{connection = Conn} = State) ->
-    Query = ["INSERT INTO transaction (event_id, player_id, currency_id, amount) ",
-             "VALUES ('", binary_to_list(EventId), "', ",
-                      "'", binary_to_list(PlayerId), "', ",
-                      "(SELECT id FROM currency WHERE type = '",
-                            binary_to_list(CurrencyType), "'), ",
-                      integer_to_list(Amount), ") ",
-             "RETURNING id"],
+    Query = ["INSERT INTO polyana_transaction (event_id, player_id, currency_id, amount) ",
+             "VALUES ($1, $2, (SELECT id FROM polyana_currency WHERE type = $3), $4) RETURNING id"],
 
-    case epgsql:squery(Conn, Query) of
+    Parameters = [EventId, binary_to_integer(PlayerId), binary_to_list(CurrencyType), Amount],
+
+    case epgsql:equery(Conn, Query, Parameters) of
         {ok, 1, _Columns, [{TransactionId}]} ->
             ok = update_money_balance(Conn, PlayerId, CurrencyType, Amount),
             {reply, {ok, TransactionId}, State}
@@ -220,10 +219,10 @@ handle_call({save_transaction, EventId, PlayerId, CurrencyType, Amount},
 handle_call({save_winner, BattleId, PlayerId},
             _From,
             #state{connection = Conn} = State) ->
-    Query = ["UPDATE battle SET winner = ", binary_to_list(PlayerId),
-             " WHERE id = ", binary_to_list(BattleId)],
+    Query = ["UPDATE polyana_battle SET winner_id = $1 WHERE id = $2"],
+    Parameters = [binary_to_integer(PlayerId), BattleId],
 
-    case epgsql:squery(Conn, Query) of
+    case epgsql:equery(Conn, Query, Parameters) of
         {ok, 1} ->
             {reply, ok, State}
     end;
@@ -233,10 +232,10 @@ handle_call(_Request, _From, State) ->
 
 
 handle_cast({add_played_game, PlayerId}, #state{connection = Conn} = State) ->
-    Query = ["UPDATE player ",
+    Query = ["UPDATE polyana_player ",
              "SET played_battles = (",
              "(SELECT played_battles ",
-                "FROM player ",
+                "FROM polyana_player ",
                 "WHERE id = ", binary_to_list(PlayerId), ") + 1) ",
              "WHERE id = ", binary_to_list(PlayerId)],
 
@@ -246,10 +245,10 @@ handle_cast({add_played_game, PlayerId}, #state{connection = Conn} = State) ->
     end;
 
 handle_cast({add_won_game, PlayerId}, #state{connection = Conn} = State) ->
-    Query = ["UPDATE player ",
+    Query = ["UPDATE polyana_player ",
              "SET battles_won = (",
              "(SELECT battles_won ",
-                 "FROM player ",
+                 "FROM polyana_player ",
                  "WHERE id = ", binary_to_list(PlayerId), ") + 1) ",
              "WHERE id = ", binary_to_list(PlayerId)],
 
@@ -264,13 +263,13 @@ handle_cast({update_winrate, PlayerId}, #state{connection = Conn} = State) ->
             {noreply, State};
 
         _Amount ->
-            Query = ["UPDATE player ",
+            Query = ["UPDATE polyana_player ",
                     "SET winrate = (",
                     "(SELECT cast(battles_won AS float) "
-                        "FROM player ",
+                        "FROM polyana_player ",
                         "WHERE id = ", binary_to_list(PlayerId),") / ",
                     "(SELECT played_battles ",
-                        "FROM player ",
+                        "FROM polyana_player ",
                         "WHERE id = ", binary_to_list(PlayerId), ")) ",
                     "WHERE id = ", binary_to_list(PlayerId)],
 
@@ -296,7 +295,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 get_won_battles(Connection, PlayerId) ->
-    Query = ["select battles_won from player where id = ",
+    Query = ["select battles_won from polyana_player where id = ",
             binary_to_list(PlayerId)],
 
     case epgsql:squery(Connection, Query) of
@@ -306,15 +305,15 @@ get_won_battles(Connection, PlayerId) ->
 
 update_money_balance(Connection, PlayerId, CurrencyType, Amount) ->
     Query = [
-        "UPDATE money ",
-        "SET amount = ((SELECT amount FROM money ",
+        "UPDATE polyana_money ",
+        "SET amount = ((SELECT amount FROM polyana_money ",
                        "WHERE player_id = ", binary_to_list(PlayerId),
                        " AND currency_id = ",
-                            "(SELECT id FROM currency WHERE type = '",
+                            "(SELECT id FROM polyana_currency WHERE type = '",
                                 binary_to_list(CurrencyType), "')) ",
                             " + ", integer_to_list(Amount), ") ",
         "WHERE player_id = ", binary_to_list(PlayerId),
-        " AND currency_id = ", "(SELECT id FROM currency WHERE type = '",
+        " AND currency_id = ", "(SELECT id FROM polyana_currency WHERE type = '",
                                             binary_to_list(CurrencyType), "')"],
 
     case epgsql:squery(Connection, Query) of
@@ -323,15 +322,13 @@ update_money_balance(Connection, PlayerId, CurrencyType, Amount) ->
     end.
 
 get_array_for_query(Values) ->
-    ArrayForQuery = lists:foldl(
+    lists:foldl(
         fun (Value, Array) ->
-            lists:append(Array, [binary_to_list(Value)])
+            [binary_to_integer(Value) | Array]
         end,
         [],
         Values
-    ),
-
-    lists:append([["'{"], lists:join(", ", ArrayForQuery), ["}'"]]).
+    ).
 
 make_auth_query(Connection, Query, State) ->
     case epgsql:squery(Connection, Query) of
@@ -349,7 +346,7 @@ make_auth_query(Connection, Query, State) ->
     end.
 
 update_token(Connection, PlayerId) ->
-    Query = ["select token from player where id = ", PlayerId,
+    Query = ["select token from polyana_player where id = ", PlayerId,
              " and token_expiration >= now()"],
 
     case epgsql:squery(Connection, Query) of
@@ -366,7 +363,7 @@ get_new_token() ->
 
 create_token(Connection, PlayerId) ->
     Query = [
-        "UPDATE player ",
+        "UPDATE polyana_player ",
         "SET token = '", get_new_token(), "', ",
         "token_expiration = timezone('UTC'::text, now()) + interval '1 hour'",
         "WHERE id = '", PlayerId, "'"
@@ -376,7 +373,7 @@ create_token(Connection, PlayerId) ->
 
 extend_token_lifetime(Connection, PlayerId) ->
     Query = [
-        "UPDATE player ",
+        "UPDATE polyana_player ",
         "SET token_expiration = timezone('UTC'::text, now()) + interval '1 hour'",
         "WHERE id = '", PlayerId, "'"
     ],
@@ -384,7 +381,7 @@ extend_token_lifetime(Connection, PlayerId) ->
     {ok, _} = epgsql:squery(Connection, Query).
 
 get_rate(Connection, Currency) ->
-    Query = ["SELECT rate FROM currency WHERE type = '",
+    Query = ["SELECT rate FROM polyana_currency WHERE type = '",
              binary_to_list(Currency), "'"],
 
     {ok, _Columns, [{Rate}]} = epgsql:squery(Connection, Query),
