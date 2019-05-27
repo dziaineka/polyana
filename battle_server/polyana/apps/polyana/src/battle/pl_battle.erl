@@ -519,11 +519,6 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
         fun ({PlayerPid, #player_info{currency_type = PlayerCurrencyType}}) ->
             PlayerId = pl_player_srv:get_id(PlayerPid),
 
-            % добавим единичку к выигранным
-            pl_storage_srv:add_won_game(PlayerId),
-            % пересчитаем винрейт
-            pl_storage_srv:update_winrate(PlayerId),
-
             % сохраним событие о конце игры
             {ok, EventId} = pl_storage_srv:save_event(battle_end,
                                                       BattleId,
@@ -531,6 +526,11 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
 
             case (pl_player_srv:get_id(WinnerPid) == PlayerId) of
                 true ->
+                    % добавим единичку к выигранным
+                    pl_storage_srv:add_won_game(PlayerId),
+                    % пересчитаем винрейт
+                    pl_storage_srv:update_winrate(PlayerId),
+
                     % переведем победителю банк
                     pl_storage_srv:save_transaction(
                         EventId,
