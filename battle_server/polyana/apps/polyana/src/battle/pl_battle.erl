@@ -391,16 +391,21 @@ gen_empty_field(_M, -1, Acc, _M_orig, _N_orig) ->
     Acc;
 
 gen_empty_field(-1, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
-    gen_empty_field(FieldHeight_orig, FieldWidth-1,
-              Acc,
-              FieldHeight_orig, FieldWidth_orig);
+    gen_empty_field(FieldHeight_orig, FieldWidth-1, Acc,
+                    FieldHeight_orig, FieldWidth_orig);
 
-gen_empty_field(FieldHeight, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
-    Acc2 = Acc#{{FieldHeight,FieldWidth}=> <<"O">>},
+gen_empty_field(FieldHeight, FieldWidth, Acc,
+                FieldHeight_orig, FieldWidth_orig) ->
+    case rand:uniform(5) of
+        1 ->
+            Acc2 = Acc#{{FieldHeight,FieldWidth} => <<"X">>};
 
-    gen_empty_field(FieldHeight-1, FieldWidth,
-              Acc2,
-              FieldHeight_orig, FieldWidth_orig).
+        _ ->
+            Acc2 = Acc#{{FieldHeight,FieldWidth} => <<"O">>}
+    end,
+
+    gen_empty_field(FieldHeight-1, FieldWidth, Acc2,
+                    FieldHeight_orig, FieldWidth_orig).
 
 
 change_order([Active|Passive])->
