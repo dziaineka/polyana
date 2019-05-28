@@ -39,7 +39,8 @@
 -record(player_info, {
     position,
     mark,
-    currency_type
+    currency_type,
+    id
 }).
 
 %%%===================================================================
@@ -78,6 +79,7 @@ init({CurrencyType, Bid, PlayersWithCurrencies}) ->
     {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
 
     send_battle_pid(Players),
+    monitor_players(Players),
     Order = shuffle(Players),
     PlayersInfo = get_players_info(Players, Currencies),
     Field = create_field(PlayersInfo),
@@ -101,8 +103,16 @@ init({CurrencyType, Bid, PlayersWithCurrencies}) ->
 
 send_battle_pid(Players) ->
     lists:foreach(
-        fun(PlayerSrv) ->
-            pl_player_srv:add_battle_pid(PlayerSrv, self())
+        fun(PlayerPid) ->
+            pl_player_srv:add_battle_pid(PlayerPid, self())
+        end,
+        Players
+    ).
+
+monitor_players(Players) ->
+    lists:foreach(
+        fun(PlayerPid) ->
+            monitor(process, PlayerPid)
         end,
         Players
     ).
@@ -179,9 +189,9 @@ save_start_game_data(CurrencyType, Bid, PlayersWithCurrencies) ->
 
     {ok, BattleId}.
 
-invite_players_to_game(PlayersInfo, [First|_Order], Raw_Field) ->
+invite_players_to_game(PlayersInfo, [First|_Order], StringField) ->
     Players = maps:keys(PlayersInfo),
-    Field = list_to_binary(Raw_Field),
+    Field = list_to_binary(StringField),
 
     lists:foreach(
         fun (PlayerPid) ->
@@ -217,57 +227,26 @@ handle_cast({move, PlayerPid, Direction},
                 battle_field_size = Size,
                 players_info = PlayersInfo,
                 turn_order = Order} = State) ->
-    {Flag, Msg, Field2, NewPlayersInfo, Order2} =
+    {Flag, Msg, NewField, NewPlayersInfo, NewOrder} =
         move(PlayerPid, Direction, Field, PlayersInfo, Order),
 
     case Flag of
         nok ->
-            Raw_Field = field_to_msg(Field, Size),
-            Reply = <<(list_to_binary(Raw_Field))/binary, Msg/binary, "\n">>,
+            StringField = field_to_msg(Field, Size),
+            Reply = <<(list_to_binary(StringField))/binary, Msg/binary, "\n">>,
             multicast(Reply, [NewPlayersInfo]),
             {noreply, State};
 
         single ->
             [First| _Others] = Order,
-            Raw_Field = field_to_msg(Field, Size),
-            Reply = <<(list_to_binary(Raw_Field))/binary, Msg/binary, "\n">>,
+            StringField = field_to_msg(Field, Size),
+            Reply = <<(list_to_binary(StringField))/binary, Msg/binary, "\n">>,
             multicast(Reply, [First]),
             {noreply, State};
 
         multi ->
-            Order3 = lose_condition(Field2, NewPlayersInfo, Order2, Order2),
-            NewField = field_to_msg(Field2, Size),
-            NewPlayersList = maps:keys(NewPlayersInfo),
-
-            case win_condition(Order3, NewPlayersInfo) of
-                next ->
-                    State2 = State#state{battle_field = Field2,
-                                        players_info = NewPlayersInfo,
-                                        turn_order = Order3},
-
-                    [NextPlayer | _] = Order3,
-
-                    #player_info{mark = Mark} =
-                        maps:get(NextPlayer, NewPlayersInfo),
-
-                    Msg2 = <<Msg/binary, " player ", Mark/binary>>,
-                    Reply = <<(list_to_binary(NewField))/binary, Msg2/binary, "\n">>,
-                    multicast(Reply, {NextPlayer, NewPlayersList}),
-                    {noreply, State2};
-
-                {WinnerPid, WinMessage} ->
-                    State2 = State#state{battle_field = Field2,
-                                        players_info = NewPlayersInfo,
-                                        turn_order = Order3,
-                                        winner = WinnerPid},
-
-                    Reply = <<(list_to_binary(NewField))/binary, WinMessage/binary, "\n">>,
-                    multicast(Reply, NewPlayersList),
-
-                    stop(self()),
-
-                    {noreply, State2}
-            end
+            check_battle_conditions(NewField, NewPlayersInfo, NewOrder,
+                                    Size, State, Msg)
     end;
 
 handle_cast(stop, #state{battle_id = BattleId,
@@ -287,6 +266,24 @@ handle_cast(_Request, State) ->
     {noreply, State}.
 
 
+handle_info({'DOWN', _Ref, process, PlayerPid, Info},
+            #state{battle_field = BattleField,
+                   turn_order = TurnOrder,
+                   players_info = PlayersInfo,
+                   battle_field_size = Size} = State) ->
+    lager:info("Player down, he is lost ~p ~p", [PlayerPid, Info]),
+    #player_info{mark = Mark} = maps:get(PlayerPid, PlayersInfo),
+
+    % multicast([<<"Player ",Mark/binary, " is gone.\n", "Send any command.\n">>],
+    %           TurnOrder),
+
+    Msg = <<"Player ",Mark/binary, " is gone.\n">>,
+
+    check_battle_conditions(BattleField, PlayersInfo, TurnOrder,
+                            Size, State, Msg),
+
+    {noreply, State#state{turn_order = lists:delete(PlayerPid, TurnOrder)}};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -300,6 +297,41 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg) ->
+    Order3 = lose_condition(NewField, NewPlayersInfo, NewOrder, NewOrder),
+    StringField = field_to_msg(NewField, Size),
+    NewPlayersList = maps:keys(NewPlayersInfo),
+
+    case win_condition(Order3, NewPlayersInfo) of
+        next ->
+            State2 = State#state{battle_field = NewField,
+                                players_info = NewPlayersInfo,
+                                turn_order = Order3},
+
+            [NextPlayer | _] = Order3,
+
+            #player_info{mark = Mark} =
+                maps:get(NextPlayer, NewPlayersInfo),
+
+            Msg2 = <<Msg/binary, " player ", Mark/binary>>,
+            Reply = <<(list_to_binary(StringField))/binary, Msg2/binary, "\n">>,
+            multicast(Reply, {NextPlayer, NewPlayersList}),
+            {noreply, State2};
+
+        {WinnerPid, WinMessage} ->
+            State2 = State#state{battle_field = NewField,
+                                players_info = NewPlayersInfo,
+                                turn_order = Order3,
+                                winner = WinnerPid},
+
+            Reply = <<(list_to_binary(StringField))/binary, WinMessage/binary, "\n">>,
+            multicast(Reply, NewPlayersList),
+
+            stop(self()),
+
+            {noreply, State2}
+    end.
 
 move(PlayerPid, Direction, Field, PlayersInfo,
             [Active|_Passive] = Order) when Active == PlayerPid ->
@@ -462,12 +494,12 @@ find_direction(Field, {Y, X}, [right|Directions]) ->
     end.
 
 
-field_to_msg(Raw_Field, {SizeFromZero, _})->
+field_to_msg(Field, {SizeFromZero, _})->
     {_Positions, CellValues} =
-            lists:unzip(lists:keysort(1, maps:to_list(Raw_Field))),
+            lists:unzip(lists:keysort(1, maps:to_list(Field))),
 
-    Field = draw_field(CellValues, SizeFromZero + 1),
-    ["\n", Field, "\n\n"].
+    StringField = draw_field(CellValues, SizeFromZero + 1),
+    ["\n", StringField, "\n\n"].
 
 draw_field(Cells, Size) ->
     draw_field(Cells, Size, []).
@@ -522,15 +554,16 @@ get_players_info(Players, Currencies) ->
 get_players_info([], _Currencies, PlayersInfo) ->
     PlayersInfo;
 
-get_players_info([Player | Players],
+get_players_info([PlayerPid | Players],
                  [Currency | Currencies],
                  PlayersInfo) ->
     PlayerInfo = #player_info{
                         currency_type = Currency,
                         position = get_initial_field_pos(length(Players) + 1),
-                        mark = get_mark(length(Players) + 1)},
+                        mark = get_mark(length(Players) + 1),
+                        id = pl_player_srv:get_id(PlayerPid)},
 
-    get_players_info(Players, Currencies, PlayersInfo#{Player => PlayerInfo}).
+    get_players_info(Players, Currencies, PlayersInfo#{PlayerPid => PlayerInfo}).
 
 get_initial_field_pos(Number) ->
     {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
@@ -548,18 +581,18 @@ get_mark(Number) ->
     lists:nth(Number, Marks).
 
 save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
-    ok = pl_storage_srv:save_winner(BattleId, pl_player_srv:get_id(WinnerPid)),
+    WinnerId = pl_player_srv:get_id(WinnerPid),
+    ok = pl_storage_srv:save_winner(BattleId, WinnerId),
 
     lists:foreach(
-        fun ({PlayerPid, #player_info{currency_type = PlayerCurrencyType}}) ->
-            PlayerId = pl_player_srv:get_id(PlayerPid),
-
+        fun ({_PlayerPid, #player_info{currency_type = PlayerCurrencyType,
+                                       id = PlayerId}}) ->
             % сохраним событие о конце игры
             {ok, EventId} = pl_storage_srv:save_event(battle_end,
                                                       BattleId,
                                                       PlayerId),
 
-            case (pl_player_srv:get_id(WinnerPid) == PlayerId) of
+            case (WinnerId == PlayerId) of
                 true ->
                     % добавим единичку к выигранным
                     pl_storage_srv:add_won_game(PlayerId),
@@ -569,7 +602,7 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
                     % переведем победителю банк
                     pl_storage_srv:save_transaction(
                         EventId,
-                        pl_player_srv:get_id(WinnerPid),
+                        WinnerId,
                         PlayerCurrencyType,
                         pl_storage_srv:exchange_currency(
                                         CurrencyType,

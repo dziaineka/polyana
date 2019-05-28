@@ -49,7 +49,7 @@ handle_cast(_Msg, State) ->
 
 
 handle_info({'DOWN', _Ref, process, Pid, Info}, State) ->
-    lager:info("Player down ~p ~p", [Pid, Info]),
+    lager:info("Player down said queue ~p ~p", [Pid, Info]),
     ets:delete(?MODULE, Pid),
     {noreply, State};
 
