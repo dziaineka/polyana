@@ -189,6 +189,19 @@ handle_call({save_event, battle_start, BattleId, PlayerId},
             {reply, {ok, EventId}, State}
     end;
 
+handle_call({save_event, login, _Source, PlayerId},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["INSERT INTO polyana_event (player_id, type, created) ",
+             "VALUES ($1, $2, $3) RETURNING id"],
+
+    Parameters = [PlayerId, "login", erlang:timestamp()],
+
+    case epgsql:equery(Conn, Query, Parameters) of
+        {ok, 1, _Columns, [{EventId}]} ->
+            {reply, {ok, EventId}, State}
+    end;
+
 handle_call({save_event, battle_end, BattleId, PlayerId},
             _From,
             #state{connection = Conn} = State) ->
