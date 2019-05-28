@@ -217,58 +217,58 @@ handle_cast({move, PlayerPid, Direction},
                 battle_field_size = Size,
                 players_info = PlayersInfo,
                 turn_order = Order} = State) ->
-{Flag, Msg, Field2, NewPlayersInfo, Order2} =
-    move(PlayerPid, Direction, Field, PlayersInfo, Order),
+    {Flag, Msg, Field2, NewPlayersInfo, Order2} =
+        move(PlayerPid, Direction, Field, PlayersInfo, Order),
 
-case Flag of
-    nok ->
-        Raw_Field = field_to_msg(Field, Size),
-        Reply = <<(list_to_binary(Raw_Field))/binary, Msg/binary, "\n">>,
-        multicast(Reply, maps:keys(NewPlayersInfo)),
-        {noreply, State};
+    case Flag of
+        nok ->
+            Raw_Field = field_to_msg(Field, Size),
+            Reply = <<(list_to_binary(Raw_Field))/binary, Msg/binary, "\n">>,
+            multicast(Reply, [NewPlayersInfo]),
+            {noreply, State};
 
-    single ->
-        [First| _Others] = Order,
-        Raw_Field = field_to_msg(Field, Size),
-        Reply = <<(list_to_binary(Raw_Field))/binary, Msg/binary, "\n">>,
-        multicast(Reply, [First]),
-        {noreply, State};
+        single ->
+            [First| _Others] = Order,
+            Raw_Field = field_to_msg(Field, Size),
+            Reply = <<(list_to_binary(Raw_Field))/binary, Msg/binary, "\n">>,
+            multicast(Reply, [First]),
+            {noreply, State};
 
-    multi ->
-        Order3 = lose_condition(Field2, NewPlayersInfo, Order2, Order2),
-        NewField = field_to_msg(Field2, Size),
-        NewPlayersList = maps:keys(NewPlayersInfo),
+        multi ->
+            Order3 = lose_condition(Field2, NewPlayersInfo, Order2, Order2),
+            NewField = field_to_msg(Field2, Size),
+            NewPlayersList = maps:keys(NewPlayersInfo),
 
-        case win_condition(Order3, NewPlayersInfo) of
-            next ->
-                State2 = State#state{battle_field = Field2,
-                                     players_info = NewPlayersInfo,
-                                     turn_order = Order3},
+            case win_condition(Order3, NewPlayersInfo) of
+                next ->
+                    State2 = State#state{battle_field = Field2,
+                                        players_info = NewPlayersInfo,
+                                        turn_order = Order3},
 
-                [NextPlayer | _] = Order3,
+                    [NextPlayer | _] = Order3,
 
-                #player_info{mark = Mark} =
-                    maps:get(NextPlayer, NewPlayersInfo),
+                    #player_info{mark = Mark} =
+                        maps:get(NextPlayer, NewPlayersInfo),
 
-                Msg2 = <<Msg/binary, " player ", Mark/binary>>,
-                Reply = <<(list_to_binary(NewField))/binary, Msg2/binary, "\n">>,
-                multicast(Reply, {NextPlayer, NewPlayersList}),
-                {noreply, State2};
+                    Msg2 = <<Msg/binary, " player ", Mark/binary>>,
+                    Reply = <<(list_to_binary(NewField))/binary, Msg2/binary, "\n">>,
+                    multicast(Reply, {NextPlayer, NewPlayersList}),
+                    {noreply, State2};
 
-            {WinnerPid, WinMessage} ->
-                State2 = State#state{battle_field = Field2,
-                                     players_info = NewPlayersInfo,
-                                     turn_order = Order3,
-                                     winner = WinnerPid},
+                {WinnerPid, WinMessage} ->
+                    State2 = State#state{battle_field = Field2,
+                                        players_info = NewPlayersInfo,
+                                        turn_order = Order3,
+                                        winner = WinnerPid},
 
-                Reply = <<(list_to_binary(NewField))/binary, WinMessage/binary, "\n">>,
-                multicast(Reply, NewPlayersList),
+                    Reply = <<(list_to_binary(NewField))/binary, WinMessage/binary, "\n">>,
+                    multicast(Reply, NewPlayersList),
 
-                stop(self()),
+                    stop(self()),
 
-                {noreply, State2}
-        end
-end;
+                    {noreply, State2}
+            end
+    end;
 
 handle_cast(stop, #state{battle_id = BattleId,
                          players_info = PlayersInfo,
@@ -394,8 +394,8 @@ lose_condition(Field, PlayersInfo, [Active|Others], Order)->
 
         lose ->
             lager:info("Player ~p lose", [Mark]),
-            %добавить команду для изменения ретинга проигравшего игрока
             Order2 = lists:delete(Active, Order),
+            multicast(<<"You lose!\n">>, [Active]),
             lose_condition(Field, PlayersInfo, Others, Order2)
     end.
 
@@ -403,7 +403,7 @@ lose_condition(Field, PlayersInfo, [Active|Others], Order)->
 win_condition(Order, PlayersInfo) when length(Order) == 1 ->
     [PlayerPid] = Order,
     #player_info{mark = Mark} = maps:get(PlayerPid, PlayersInfo),
-  %%добавить команду для изменения ретинга выигревшего игрока
+    multicast(<<"You win!\n">>, [PlayerPid]),
     {PlayerPid, <<Mark/binary, " wins. Congratulations!">>};
 
 win_condition(_Order, _PlayersInfo) ->
@@ -462,19 +462,54 @@ find_direction(Field, {Y, X}, [right|Directions]) ->
     end.
 
 
-field_to_msg(Raw_Field, {M, _})->
-    Field= new_field(Raw_Field, M),
-    Field1 = maps:to_list(Field),
-    Field2 = lists:keysort(1, Field1),
-    lists:map(fun ({_K, V})-> V end, Field2).
+field_to_msg(Raw_Field, {SizeFromZero, _})->
+    {_Positions, CellValues} =
+            lists:unzip(lists:keysort(1, maps:to_list(Raw_Field))),
+
+    Field = draw_field(CellValues, SizeFromZero + 1),
+    ["\n", Field, "\n\n"].
+
+draw_field(Cells, Size) ->
+    draw_field(Cells, Size, []).
 
 
-new_field(A, -1)->
-    A;
+draw_field(_Cells, Size, Field) when length(Field) >= Size ->
+    [lists:reverse(Field), "\n" | draw_row_top(lists:seq(1, 3))];
 
-new_field(A, M)->
-    new_field(A#{{M, a} => <<"\n">>}, M - 1).
+draw_field(Cells, Size, Field) ->
+    StartPos = 1 + Size * length(Field),
+    Row = lists:sublist(Cells, StartPos, Size),
+    draw_field(Cells, Size, [draw_row(Row) | Field]).
 
+
+draw_row(Row) ->
+    lists:flatten(["\n", draw_row_top(Row), "\n", draw_row_bottom(Row), "|"]).
+
+draw_row_top(Row) ->
+    lists:foldl(
+        fun
+            (_, RowTop) ->
+                [" ---" | RowTop]
+        end,
+        [],
+        Row
+    ).
+
+draw_row_bottom(Row) ->
+    lists:foldl(
+        fun
+            (<<"O">>, RowTop) ->
+                ["|   " | RowTop];
+
+            (<<"X">>, RowTop) ->
+                ["| X " | RowTop];
+
+            (Symbol, RowTop) ->
+                ["| " ++ binary_to_list(Symbol) ++ " " | RowTop]
+        end,
+        [],
+        lists:reverse(Row)
+    ).
 
 shuffle(List)->
     Random_list = [{rand:uniform(), X} || X <- List],

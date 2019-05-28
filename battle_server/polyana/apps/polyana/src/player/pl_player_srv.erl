@@ -127,7 +127,6 @@ handle_cast(_Request, State) ->
 
 
 handle_info({message, Msg}, #state{reply_to_user = ReplyFun} = State) ->
-    lager:info("Message info ~p from pid ~p", [Msg, self()]),
     ReplyFun(Msg),
     {noreply, State};
 
