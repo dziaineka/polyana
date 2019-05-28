@@ -57,7 +57,7 @@ handle_call({auth, Login, Pass}, _From, State) ->
     case Res of
         {ok, PlayerId} ->
             {ok, _EventId} = pl_storage_srv:save_event(login,
-                                                       undefined,
+                                                       null,
                                                        PlayerId),
 
             {reply, ok, State#state{player_id = PlayerId}};

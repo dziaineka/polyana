@@ -16,7 +16,11 @@
          save_winner/2,
          add_played_game/1,
          update_winrate/1,
-         add_won_game/1]).
+         add_won_game/1,
+         get_played_battles/1,
+         get_won_battles/1,
+         check_achievement_ownership/2,
+         save_achievement/2]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -60,6 +64,19 @@ save_transaction(EventId, PlayerId, CurrencyType, Amount) ->
 
 save_winner(BattleId, PlayerId) ->
     gen_server:call(?MODULE, {save_winner, BattleId, PlayerId}).
+
+get_played_battles(PlayerId) ->
+    gen_server:call(?MODULE, {get_played_battles, PlayerId}).
+
+get_won_battles(PlayerId) ->
+    gen_server:call(?MODULE, {get_won_battles, PlayerId}).
+
+check_achievement_ownership(PlayerId, AchievementType) ->
+    gen_server:call(?MODULE,
+                    {check_achievement_ownership, PlayerId, AchievementType}).
+
+save_achievement(PlayerId, AchievementType) ->
+    gen_server:call(?MODULE, {save_achievement, PlayerId, AchievementType}).
 
 add_played_game(PlayerId) ->
     gen_server:cast(?MODULE, {add_played_game, PlayerId}).
@@ -175,40 +192,16 @@ handle_call({save_battle, CurrencyType, Bid, Players},
             {reply, {ok, BattleId}, State}
     end;
 
-handle_call({save_event, battle_start, BattleId, PlayerId},
-            _From,
-            #state{connection = Conn} = State) ->
-
-    Query = ["INSERT INTO polyana_event (player_id, type, source, created) ",
-             "VALUES ($1, $2, $3, $4) RETURNING id"],
-
-    Parameters = [PlayerId, "battle_start", BattleId, erlang:timestamp()],
-
-    case epgsql:equery(Conn, Query, Parameters) of
-        {ok, 1, _Columns, [{EventId}]} ->
-            {reply, {ok, EventId}, State}
-    end;
-
-handle_call({save_event, login, _Source, PlayerId},
-            _From,
-            #state{connection = Conn} = State) ->
-    Query = ["INSERT INTO polyana_event (player_id, type, created) ",
-             "VALUES ($1, $2, $3) RETURNING id"],
-
-    Parameters = [PlayerId, "login", erlang:timestamp()],
-
-    case epgsql:equery(Conn, Query, Parameters) of
-        {ok, 1, _Columns, [{EventId}]} ->
-            {reply, {ok, EventId}, State}
-    end;
-
-handle_call({save_event, battle_end, BattleId, PlayerId},
+handle_call({save_event, EventType, Source, PlayerId},
             _From,
             #state{connection = Conn} = State) ->
     Query = ["INSERT INTO polyana_event (player_id, type, source, created) ",
              "VALUES ($1, $2, $3, $4) RETURNING id"],
 
-    Parameters = [PlayerId, "battle_end", BattleId, erlang:timestamp()],
+    Parameters = [PlayerId,
+                  atom_to_list(EventType),
+                  Source,
+                  erlang:timestamp()],
 
     case epgsql:equery(Conn, Query, Parameters) of
         {ok, 1, _Columns, [{EventId}]} ->
@@ -238,6 +231,79 @@ handle_call({save_winner, BattleId, PlayerId},
     case epgsql:equery(Conn, Query, Parameters) of
         {ok, 1} ->
             {reply, ok, State}
+    end;
+
+handle_call({get_played_battles, PlayerId},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["SELECT count(id) FROM polyana_battle ",
+             "WHERE $1 = ANY(participants)"],
+
+    Parameters = [PlayerId],
+
+    case epgsql:equery(Conn, Query, Parameters) of
+        {ok, _Columns, []} ->
+            {reply, {ok, 0}, State};
+
+        {ok, _Columns, [{Count}]} ->
+            {reply, {ok, Count}, State};
+
+        Unhandled ->
+            lager:warning("Unexpected query result 1: ~p", [Unhandled]),
+            {reply, error, State}
+    end;
+
+handle_call({get_won_battles, PlayerId},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["SELECT count(id) FROM polyana_battle ",
+             "WHERE winner_id = $1"],
+
+    Parameters = [PlayerId],
+
+    case epgsql:equery(Conn, Query, Parameters) of
+        {ok, _Columns, []} ->
+            {reply, {ok, 0}, State};
+
+        {ok, _Columns, [{Count}]} ->
+            {reply, {ok, Count}, State};
+
+        Unhandled ->
+            lager:warning("Unexpected query result 1: ~p", [Unhandled]),
+            {reply, error, State}
+    end;
+
+handle_call({check_achievement_ownership, PlayerId, AchievementType},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["SELECT id FROM polyana_achievement ",
+             "WHERE player_id = $1 AND type = $2"],
+
+    Parameters = [PlayerId, atom_to_list(AchievementType)],
+
+    case epgsql:equery(Conn, Query, Parameters) of
+        {ok, _Columns, []} ->
+            {reply, false, State};
+
+        {ok, _Columns, [_]} ->
+            {reply, true, State};
+
+        Unhandled ->
+            lager:warning("Unexpected query result 2: ~p", [Unhandled]),
+            {reply, error, State}
+    end;
+
+handle_call({save_achievement, PlayerId, AchievementType},
+            _From,
+            #state{connection = Conn} = State) ->
+    Query = ["INSERT INTO polyana_achievement (type, player_id, created) ",
+             "VALUES ($1, $2, $3) RETURNING id"],
+
+    Parameters = [atom_to_list(AchievementType), PlayerId, erlang:timestamp()],
+
+    case epgsql:equery(Conn, Query, Parameters) of
+        {ok, 1, _Columns, [{AchievementId}]} ->
+            {reply, {ok, AchievementId}, State}
     end;
 
 handle_call(_Request, _From, State) ->

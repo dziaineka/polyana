@@ -590,12 +590,13 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
     ok = pl_storage_srv:save_winner(BattleId, WinnerId),
 
     lists:foreach(
-        fun ({_PlayerPid, #player_info{currency_type = PlayerCurrencyType,
+        fun ({PlayerPid, #player_info{currency_type = PlayerCurrencyType,
                                        id = PlayerId}}) ->
             % сохраним событие о конце игры
             {ok, EventId} = pl_storage_srv:save_event(battle_end,
                                                       BattleId,
                                                       PlayerId),
+            ok = award_achievements(PlayerId, PlayerPid),
 
             case (WinnerId == PlayerId) of
                 true ->
@@ -620,3 +621,69 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
         end,
         maps:to_list(PlayersInfo)
     ).
+
+award_achievements(PlayerId, PlayerPid) ->
+    award_5_battles(PlayerId, PlayerPid),
+    award_5_wins(PlayerId, PlayerPid),
+    award_first_win(PlayerId, PlayerPid).
+
+award_5_battles(PlayerId, PlayerPid) ->
+    {ok, BattlesAmount} = pl_storage_srv:get_played_battles(PlayerId),
+    AchievementAlreadyReceived =
+        pl_storage_srv:check_achievement_ownership(PlayerId, '5_battles'),
+
+    case {BattlesAmount, AchievementAlreadyReceived} of
+        {_, true} ->
+            ok;
+
+        {BattlesAmount, false} when BattlesAmount >= 5 ->
+            {ok, AchievementId} =
+                pl_storage_srv:save_achievement(PlayerId, '5_battles'),
+
+            {ok, _EventId} =
+                pl_storage_srv:save_event(achievement, AchievementId, PlayerId),
+
+            multicast(<<"Achievement unlocked! 5 battles played!">>,
+                      [PlayerPid])
+    end.
+
+award_5_wins(PlayerId, PlayerPid) ->
+    {ok, WinsAmount} = pl_storage_srv:get_won_battles(PlayerId),
+    AchievementAlreadyReceived =
+        pl_storage_srv:check_achievement_ownership(PlayerId, '5_wins'),
+
+    case {WinsAmount, AchievementAlreadyReceived} of
+        {_, true} ->
+            ok;
+
+        {WinsAmount, false} when WinsAmount >= 5 ->
+            {ok, AchievementId} =
+                pl_storage_srv:save_achievement(PlayerId, '5_wins'),
+
+            {ok, _EventId} =
+                pl_storage_srv:save_event(achievement, AchievementId, PlayerId),
+
+            multicast(<<"Achievement unlocked! 5 battles won!">>,
+                      [PlayerPid])
+    end.
+
+award_first_win(PlayerId, PlayerPid) ->
+    {ok, WinsAmount} = pl_storage_srv:get_won_battles(PlayerId),
+    AchievementAlreadyReceived =
+        pl_storage_srv:check_achievement_ownership(PlayerId, first_win),
+
+    case {WinsAmount, AchievementAlreadyReceived} of
+        {_, true} ->
+            ok;
+
+        {WinsAmount, false} when WinsAmount >= 1 ->
+            {ok, AchievementId} =
+                pl_storage_srv:save_achievement(PlayerId, first_win),
+
+            {ok, _EventId} =
+                pl_storage_srv:save_event(achievement, AchievementId, PlayerId),
+
+            multicast(<<"Achievement unlocked! First win!">>,
+                      [PlayerPid])
+    end.
+
