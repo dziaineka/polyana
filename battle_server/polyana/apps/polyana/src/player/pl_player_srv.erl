@@ -16,8 +16,8 @@ auth(PlayerSrv, Login, Pass) ->
 auth(PlayerSrv, Token) ->
     gen_server:call(PlayerSrv, {auth, Token}).
 
-start_battle(PlayerSrv, {Currency, Bid}) ->
-    gen_server:call(PlayerSrv, {start_battle, {Currency, Bid}}).
+start_battle(PlayerSrv, {Currency, Bid, BattleType}) ->
+    gen_server:call(PlayerSrv, {start_battle, {Currency, Bid, BattleType}}).
 
 get_id(PlayerSrv) ->
     gen_server:call(PlayerSrv, get_id).
@@ -77,7 +77,7 @@ handle_call({auth, Token}, _From, State) ->
             {reply, error, State}
     end;
 
-handle_call({start_battle, {Currency, Bid}},
+handle_call({start_battle, {Currency, Bid, BattleType}},
             _From,
             #state{player_id = PlayerId,
                    battle_pid = BattlePid} = State) ->
@@ -87,7 +87,9 @@ handle_call({start_battle, {Currency, Bid}},
 
     case {AuthDone, PlayerInBattle, EnoughMoney} of
         {true, false, true} ->
-            pl_queue_srv:add_player(self(), PlayerId, {Currency, Bid}),
+            pl_queue_srv:add_player(self(), PlayerId,
+                                    {Currency, Bid}, BattleType),
+
             {reply, ok, State};
 
         {false, _, _} ->
@@ -152,6 +154,7 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVersion, State, _Extra) ->
     {ok, State}.
+
 
 player_authenticated(PlayerId) ->
     if

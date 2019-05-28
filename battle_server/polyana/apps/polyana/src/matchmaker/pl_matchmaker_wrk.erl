@@ -1,29 +1,33 @@
 -module(pl_matchmaker_wrk).
 
--export([start_link/0]).
--export([init/0]).
+-export([start_link/2]).
+-export([init/2]).
 
 -record(state, {
-    players_amount = 2,
+    players_amount,
     rating_delta = 0.01,
-    expand_multiplier = 2
+    expand_multiplier = 2,
+    battle_type
 }).
 
-start_link() ->
-    Pid = spawn_link(?MODULE, init, []),
+start_link(PlayersAmount, BattleType) ->
+    Pid = spawn_link(?MODULE, init, [PlayersAmount, BattleType]),
     {ok, Pid}.
 
-init() ->
-    lager:info("Starting matching process."),
-    State = #state{},
+init(PlayersAmount, BattleType) ->
+    lager:info("Starting matching process ~p.", [BattleType]),
+
+    State = #state{players_amount = PlayersAmount,
+                   battle_type = BattleType},
     loop(State).
 
 loop(#state{players_amount = Amount,
             rating_delta = Delta,
-            expand_multiplier = Multiplier} = State) ->
+            expand_multiplier = Multiplier,
+            battle_type = BattleType} = State) ->
     timer:sleep(2000),
 
-    case ets:first(pl_queue_srv) of
+    case ets:first(BattleType) of
         '$end_of_table' ->
             loop(State);
 
@@ -31,11 +35,11 @@ loop(#state{players_amount = Amount,
             {Currency,
              Bid,
              Players,
-             PlayersCurrencies} = match_players(Amount, Delta),
+             PlayersCurrencies} = match_players(Amount, BattleType, Delta),
 
             if
                 Amount == length(Players) ->
-                    remove_from_queue(Players),
+                    remove_from_queue(Players, BattleType),
 
                     create_room({Currency,
                                  Bid,
@@ -46,31 +50,27 @@ loop(#state{players_amount = Amount,
                 true ->
                     case Delta * Multiplier of
                         BigDelta when BigDelta > 1 ->
-                            loop(#state{players_amount = Amount,
-                                        rating_delta = 1, % max delta
-                                        expand_multiplier = Multiplier});
+                            loop(State#state{rating_delta = 1}); % max delta
 
                         NewDelta ->
-                            loop(#state{players_amount = Amount,
-                                        rating_delta = NewDelta,
-                                        expand_multiplier = Multiplier})
+                            loop(State#state{rating_delta = NewDelta})
                     end
 
             end
     end.
 
-match_players(Amount, Delta) ->
+match_players(Amount, BattleType, Delta) ->
     GetGameParams = fun (Player, Acc) ->
         get_game_parameters(Amount, Delta, Player, Acc)
     end,
 
     [{_PlayerPid, _PlayerId, _Rating, Currency, Bid}] =
-        ets:lookup(pl_queue_srv, ets:first(pl_queue_srv)),
+        ets:lookup(BattleType, ets:first(BattleType)),
 
     {BattleCurrency, BattleBid, PlayersAndInfo} = ets:foldl(
         GetGameParams,
         {Currency, Bid, []},
-        pl_queue_srv
+        BattleType
     ),
 
     {Players, _Ratings, Currencies} = lists:unzip3(PlayersAndInfo),
@@ -126,10 +126,10 @@ get_min_bid({BattleCurrency, BattleBid}, {CurrencyType, Bid}) ->
 notify_player(Pid) ->
     Pid ! matching_in_progress.
 
-remove_from_queue(Players) ->
+remove_from_queue(Players, BattleType) ->
     lists:foreach(
         fun (PlayerPid) ->
-            pl_queue_srv:delete_player(PlayerPid)
+            pl_queue_srv:delete_player(PlayerPid, BattleType)
         end,
         Players
     ).

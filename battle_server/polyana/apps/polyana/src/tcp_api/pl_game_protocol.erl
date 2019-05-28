@@ -63,7 +63,12 @@ loop(#state{socket = Socket,
             end;
 
         {ok, <<"BATTLE ", Bid/binary>>} ->
-            Reply = handle_battle(PlayerSrv, Bid),
+            Reply = handle_battle(PlayerSrv, Bid, head_to_head),
+            Transport:send(Socket, Reply),
+            loop(State);
+
+        {ok, <<"ROYALE ", Bid/binary>>} ->
+            Reply = handle_battle(PlayerSrv, Bid, battle_royale),
             Transport:send(Socket, Reply),
             loop(State);
 
@@ -128,7 +133,7 @@ handle_auth(PlayerSrv, LoginPass) ->
         error -> {error, <<"AUTH FAILED\n">>}
     end.
 
-handle_battle(PlayerSrv, Parameters) ->
+handle_battle(PlayerSrv, Parameters, BattleType) ->
     StrBid = binary:replace(binary:replace(Parameters, <<"\r\n">>, <<>>),
                             <<" ">>,
                             <<>>),
@@ -140,7 +145,9 @@ handle_battle(PlayerSrv, Parameters) ->
         {Bid, Currency} when
                 (Currency == <<"GOLD">>) or (Currency == <<"SILVER">>) -> % прибить гвоздями - это так
             lager:info("battle player ~p", [PlayerSrv]),
-            Res = pl_player_srv:start_battle(PlayerSrv, {Currency, Bid}),
+
+            Res = pl_player_srv:start_battle(PlayerSrv,
+                                             {Currency, Bid, BattleType}),
 
             case Res of
                 ok -> <<"TO BATTLE!\n">>;

@@ -25,8 +25,16 @@ init(_Args) ->
             modules => [pl_queue_srv]
         },
         #{
-            id => pl_matchmaker_wrk,
-            start => {pl_matchmaker_wrk, start_link, []},
+            id => pl_matchmaker_head_to_head,
+            start => {pl_matchmaker_wrk, start_link, [2, head_to_head]},
+            restart => permanent, % permanent | transient | temporary
+            shutdown => 2000,
+            type => worker, % worker | supervisor
+            modules => [pl_matchmaker_wrk]
+        },
+        #{
+            id => pl_matchmaker_battle_royale,
+            start => {pl_matchmaker_wrk, start_link, [4, battle_royale]},
             restart => permanent, % permanent | transient | temporary
             shutdown => 2000,
             type => worker, % worker | supervisor

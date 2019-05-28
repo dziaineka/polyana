@@ -506,7 +506,7 @@ draw_field(Cells, Size) ->
 
 
 draw_field(_Cells, Size, Field) when length(Field) >= Size ->
-    [lists:reverse(Field), "\n" | draw_row_top(lists:seq(1, 3))];
+    [lists:reverse(Field), "\n" | draw_row_top(lists:seq(1, Size))];
 
 draw_field(Cells, Size, Field) ->
     StartPos = 1 + Size * length(Field),
