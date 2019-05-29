@@ -6,7 +6,9 @@ from .views import (
     RegistrationView,
     HomePageView,
     MyLoginView,
-    MyLogoutView
+    MyLogoutView,
+    ShopView,
+    PaymentView,
 )
 from django.views.decorators.csrf import csrf_exempt
 
@@ -22,4 +24,7 @@ urlpatterns = [
     path('logout/', MyLogoutView.as_view(), name='logout'),
 
     path('homepage/', HomePageView.as_view(), name='home'),
+    path('shop/', ShopView.as_view(), name='shop'),
+    path('payment/<key>/', PaymentView.as_view(), name='payment'),
+
 ]

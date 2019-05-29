@@ -1,13 +1,20 @@
 {% extends 'polyana/base.html' %}
 
 {% block content %}
+<p>
+ <div class="row justify-content-end mt-12">
 {% if user.is_authenticated and user == player.user_id %}
+  <p><a href="{% url 'shop' %}">SHOP</a></p>
+</div>
   <h1>My account</h2>
   <br>
   <h4>Welcome, {{ user.username }}!</h4>
   <br>
 
   <h4>Your info:</h4>
+  {% for m in money %}
+    {{m.currency_id.currency_type}}: {{m.amount}}<br>
+  {% endfor %}
   <br>
   <h6>played_battles: {{ player.played_battles }}</h6>
   <h6>battles_won: {{ player.battles_won }}</h6>

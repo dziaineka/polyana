@@ -1,0 +1,26 @@
+{% extends 'polyana/base.html' %}
+
+{% block content %}
+ <div class="row justify-content-center mt-5">
+ <div class="col-sm-6">
+<form method="post" class="shadow p-3 mb-5 bg-white rounded">
+    {% csrf_token %}
+    {{form.card_number.label_tag}}<br> <input type="text" name="card_number" value="{{form.card_number.val}}" pattern="[0-9]{12}" maxlength="12" placeholder=""><br>
+    <br>{{form.validity_month.label_tag}} {{form.validity_month}}
+    {{form.validity_year.label_tag}} {{form.validity_year}}<br>
+    {{form.cvv.label_tag}}<br> <input type="text" name="cvv" value="{{form.cvv.val}}" pattern="[0-9]{3}" maxlength="3" placeholder="">
+    {% if form.non_field_errors %}
+      {{ form.non_field_errors }}
+    {% else %}
+      {{ form.errors }}
+    {% endif %}
+    <p>
+    <div class="form-group row ">
+      <div class="col-sm-10">
+        <button type="submit" class="btn btn-primary">Pay</button>
+      </div>
+    </div>
+  </form>
+  </div>
+  </div>
+{% endblock %}
