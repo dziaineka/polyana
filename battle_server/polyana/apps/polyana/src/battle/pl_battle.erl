@@ -443,7 +443,7 @@ gen_empty_field(-1, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
 
 gen_empty_field(FieldHeight, FieldWidth, Acc,
                 FieldHeight_orig, FieldWidth_orig) ->
-    case rand:uniform(5) of
+    case rand:uniform(8) of
         1 ->
             Acc2 = Acc#{{FieldHeight,FieldWidth} => <<"X">>};
 
