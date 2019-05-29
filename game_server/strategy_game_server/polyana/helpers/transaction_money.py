@@ -3,23 +3,23 @@ from polyana.models import Transaction, Money, Currency, Money
 
 def transaction_save(event, player, currency_id, amount):
     transaction = Transaction()
-    transaction.event_id = event
-    transaction.player_id = player
-    transaction.currency_id = currency_id
+    transaction.event = event
+    transaction.player = player
+    transaction.currency = currency_id
     transaction.amount = amount
     transaction.save()
 
 
 def money_save(player, currency_id, amount):
     try:
-        money = Money.objects.get(player_id=player, currency_id=currency_id)
+        money = Money.objects.get(player=player, currency=currency_id)
         money.amount += amount
     except Money.DoesNotExist:
         money = Money()
         money.amount = amount
-
-        money.player_id = player
-        money.currency_id = currency_id
+        money.player = player
+        money.currency = currency_id
+        
     money.save()
 
 

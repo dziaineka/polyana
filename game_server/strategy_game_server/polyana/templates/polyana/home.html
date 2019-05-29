@@ -13,7 +13,7 @@
 
   <h4>Your info:</h4>
   {% for m in money %}
-    {{m.currency_id.currency_type}}: {{m.amount}}<br>
+    {{m.currency.currency_type}}: {{m.amount}}<br>
   {% endfor %}
   <br>
   <h6>played_battles: {{ player.played_battles }}</h6>
