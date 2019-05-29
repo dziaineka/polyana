@@ -643,9 +643,6 @@ get_mark(Number) ->
     lists:nth(Number, Marks).
 
 save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
-    WinnerId = pl_player_srv:get_id(WinnerPid),
-    ok = pl_storage_srv:save_winner(BattleId, WinnerId),
-
     lists:foreach(
         fun ({PlayerPid, #player_info{currency_type = PlayerCurrencyType,
                                        id = PlayerId}}) ->
@@ -655,8 +652,10 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
                                                       PlayerId),
             ok = award_achievements(PlayerId, PlayerPid),
 
-            case (WinnerId == PlayerId) of
+            case (WinnerPid == PlayerPid) of
                 true ->
+                    % сохраняем игрока как победителя игры
+                    ok = pl_storage_srv:save_winner(BattleId, PlayerId),
                     % добавим единичку к выигранным
                     pl_storage_srv:add_won_game(PlayerId),
                     % пересчитаем винрейт
@@ -665,7 +664,7 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
                     % переведем победителю банк
                     pl_storage_srv:save_transaction(
                         EventId,
-                        WinnerId,
+                        PlayerId,
                         PlayerCurrencyType,
                         pl_storage_srv:exchange_currency(
                                         CurrencyType,
