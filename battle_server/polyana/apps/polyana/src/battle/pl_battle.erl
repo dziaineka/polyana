@@ -689,9 +689,6 @@ award_5_battles(PlayerId, PlayerPid) ->
         pl_storage_srv:check_achievement_ownership(PlayerId, '5_battles'),
 
     case {BattlesAmount, AchievementAlreadyReceived} of
-        {_, true} ->
-            ok;
-
         {BattlesAmount, false} when BattlesAmount >= 5 ->
             {ok, AchievementId} =
                 pl_storage_srv:save_achievement(PlayerId, '5_battles'),
@@ -712,9 +709,6 @@ award_5_wins(PlayerId, PlayerPid) ->
         pl_storage_srv:check_achievement_ownership(PlayerId, '5_wins'),
 
     case {WinsAmount, AchievementAlreadyReceived} of
-        {_, true} ->
-            ok;
-
         {WinsAmount, false} when WinsAmount >= 5 ->
             {ok, AchievementId} =
                 pl_storage_srv:save_achievement(PlayerId, '5_wins'),
@@ -723,7 +717,10 @@ award_5_wins(PlayerId, PlayerPid) ->
                 pl_storage_srv:save_event(achievement, AchievementId, PlayerId),
 
             multicast(<<"Achievement unlocked! 5 battles won!">>,
-                      [PlayerPid])
+                      [PlayerPid]);
+
+        _ ->
+            ok
     end.
 
 award_first_win(PlayerId, PlayerPid) ->
@@ -732,9 +729,6 @@ award_first_win(PlayerId, PlayerPid) ->
         pl_storage_srv:check_achievement_ownership(PlayerId, first_win),
 
     case {WinsAmount, AchievementAlreadyReceived} of
-        {_, true} ->
-            ok;
-
         {WinsAmount, false} when WinsAmount >= 1 ->
             {ok, AchievementId} =
                 pl_storage_srv:save_achievement(PlayerId, first_win),
@@ -743,7 +737,10 @@ award_first_win(PlayerId, PlayerPid) ->
                 pl_storage_srv:save_event(achievement, AchievementId, PlayerId),
 
             multicast(<<"Achievement unlocked! First win!">>,
-                      [PlayerPid])
+                      [PlayerPid]);
+
+        _ ->
+            ok
     end.
 
 check_round(#round{count = Count, status = Status}) ->
