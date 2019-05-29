@@ -407,7 +407,7 @@ in_move(Field, NewPosition, PlayersInfo, [Active | Passive], Turn_Count, Round) 
             };
 
         _ ->
-            {single, <<"NO WAY">>, Field, [Active], [Active | Passive]}
+            {single, <<"NO WAY">>, Field, [Active], [Active | Passive], Turn_Count, Round}
     end.
 
 
