@@ -701,7 +701,10 @@ award_5_battles(PlayerId, PlayerPid) ->
                 pl_storage_srv:save_event(achievement, AchievementId, PlayerId),
 
             multicast(<<"Achievement unlocked! 5 battles played!">>,
-                      [PlayerPid])
+                      [PlayerPid]);
+
+        _ ->
+            ok
     end.
 
 award_5_wins(PlayerId, PlayerPid) ->
