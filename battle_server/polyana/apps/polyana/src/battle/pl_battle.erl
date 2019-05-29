@@ -326,12 +326,12 @@ check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg,
                                            NewOrder,
                                            Turn_Count2),
 
-    StringField = field_to_msg(NewField, Size),
+    StringField = field_to_msg(NewField2, Size),
     NewPlayersList = maps:keys(NewPlayersInfo),
 
     case win_condition(Order3, NewPlayersInfo) of
         next ->
-            State2 = State#state{battle_field = NewField,
+            State2 = State#state{battle_field = NewField2,
                                 players_info = NewPlayersInfo,
                                 turn_order = Order3,
                                 turn_count = Turn_Count3,
