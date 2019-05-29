@@ -33,7 +33,10 @@
     turn_order,
     bid,
     currency_type,
-    winner = undefined
+    winner = undefined,
+    turn_count = 0,
+    round,
+    fire
 }).
 
 -record(player_info, {
@@ -41,6 +44,11 @@
     mark,
     currency_type,
     id
+}).
+
+-record(round, {
+    count,
+    status
 }).
 
 %%%===================================================================
@@ -90,6 +98,8 @@ init({CurrencyType, Bid, PlayersWithCurrencies}) ->
                                           PlayersWithCurrencies),
 
     invite_players_to_game(PlayersInfo, Order, StringField),
+    Turn_Count = length(Order),
+    Round = #round{count = 1, status = inactive},
 
     State = #state{battle_id = BattleId,
                    players_info = PlayersInfo,
@@ -97,7 +107,11 @@ init({CurrencyType, Bid, PlayersWithCurrencies}) ->
                    battle_field_size = {FieldHeight, FieldWidth},
                    turn_order = Order,
                    bid = Bid,
-                   currency_type = CurrencyType},
+                   currency_type = CurrencyType,
+                    turn_count = Turn_Count,
+                    round = Round,
+                    fire = #{}
+        },
 
     {ok, State}.
 
@@ -226,9 +240,12 @@ handle_cast({move, PlayerPid, Direction},
             #state{battle_field = Field,
                 battle_field_size = Size,
                 players_info = PlayersInfo,
-                turn_order = Order} = State) ->
-    {Flag, Msg, NewField, NewPlayersInfo, NewOrder} =
-        move(PlayerPid, Direction, Field, PlayersInfo, Order),
+                turn_order = Order,
+                turn_count = Turn_Count,
+                round = Round,
+                fire = Fire} = State) ->
+    {Flag, Msg, NewField, NewPlayersInfo, NewOrder, Turn_Count2, New_Round} =
+        move(PlayerPid, Direction, Field, PlayersInfo, Order, Turn_Count, Round),
 
     case Flag of
         nok ->
@@ -246,7 +263,7 @@ handle_cast({move, PlayerPid, Direction},
 
         multi ->
             check_battle_conditions(NewField, NewPlayersInfo, NewOrder,
-                                    Size, State, Msg)
+                                    Size, State, Msg, Turn_Count2, New_Round, Fire)
     end;
 
 handle_cast(stop, #state{battle_id = BattleId,
@@ -270,7 +287,10 @@ handle_info({'DOWN', _Ref, process, PlayerPid, Info},
             #state{battle_field = BattleField,
                    turn_order = TurnOrder,
                    players_info = PlayersInfo,
-                   battle_field_size = Size} = State) ->
+                   battle_field_size = Size,
+                    turn_count = Turn_Count,
+                    round = Round,
+                    fire = Fire} = State) ->
     lager:info("Player down, he is lost ~p ~p", [PlayerPid, Info]),
     #player_info{mark = Mark} = maps:get(PlayerPid, PlayersInfo),
 
@@ -280,7 +300,7 @@ handle_info({'DOWN', _Ref, process, PlayerPid, Info},
     Msg = <<"Player ",Mark/binary, " is gone.\n">>,
 
     check_battle_conditions(BattleField, PlayersInfo, TurnOrder,
-                            Size, State, Msg),
+                            Size, State, Msg, Turn_Count, Round, Fire),
 
     {noreply, State#state{turn_order = lists:delete(PlayerPid, TurnOrder)}};
 
@@ -298,8 +318,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg) ->
-    Order3 = lose_condition(NewField, NewPlayersInfo, NewOrder, NewOrder),
+check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg,
+    Turn_Count2, New_Round, Fire) ->
+    {NewMsg, NewField2, Round2, Fire2} = set_fire(Msg, NewField, New_Round, Fire),
+    {Order3, Turn_Count3} = lose_condition(NewField2, NewPlayersInfo, NewOrder, NewOrder, Turn_Count2),
     StringField = field_to_msg(NewField, Size),
     NewPlayersList = maps:keys(NewPlayersInfo),
 
@@ -307,14 +329,17 @@ check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg) ->
         next ->
             State2 = State#state{battle_field = NewField,
                                 players_info = NewPlayersInfo,
-                                turn_order = Order3},
+                                turn_order = Order3,
+                                turn_count = Turn_Count3,
+                                round = Round2,
+                                fire = Fire2},
 
             [NextPlayer | _] = Order3,
 
             #player_info{mark = Mark} =
                 maps:get(NextPlayer, NewPlayersInfo),
 
-            Msg2 = <<Msg/binary, " player ", Mark/binary>>,
+            Msg2 = <<NewMsg/binary, " player ", Mark/binary>>,
             Reply = <<(list_to_binary(StringField))/binary, Msg2/binary, "\n">>,
             multicast(Reply, {NextPlayer, NewPlayersList}),
             {noreply, State2};
@@ -334,30 +359,30 @@ check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg) ->
     end.
 
 move(PlayerPid, Direction, Field, PlayersInfo,
-            [Active|_Passive] = Order) when Active == PlayerPid ->
+            [Active|_Passive] = Order, Turn_Count, Round) when Active == PlayerPid ->
     PlayerInfo = maps:get(Active, PlayersInfo),
     {Y, X} = PlayerInfo#player_info.position,
 
     case Direction of
         up ->
-            in_move(Field, {Y - 1, X}, PlayersInfo, Order);
+            in_move(Field, {Y - 1, X}, PlayersInfo, Order, Turn_Count, Round);
 
         down ->
-            in_move(Field, {Y + 1, X}, PlayersInfo, Order);
+            in_move(Field, {Y + 1, X}, PlayersInfo, Order, Turn_Count, Round);
 
         left ->
-            in_move(Field, {Y, X - 1}, PlayersInfo, Order);
+            in_move(Field, {Y, X - 1}, PlayersInfo, Order, Turn_Count, Round);
 
         right ->
-            in_move(Field, {Y, X + 1}, PlayersInfo, Order)
+            in_move(Field, {Y, X + 1}, PlayersInfo, Order, Turn_Count, Round)
     end;
 
 move(PlayerPid, _Direction, Field, _PlayersPos,
-            [Active|_Passive]=Order) when Active=/= PlayerPid ->
-    {nok, <<"Not your turn">>, Field, PlayerPid, Order}.
+            [Active|_Passive]=Order, Turn_Count, Round) when Active=/= PlayerPid ->
+    {nok, <<"Not your turn">>, Field, PlayerPid, Order, Turn_Count, Round}.
 
 
-in_move(Field, NewPosition, PlayersInfo, [Active | Passive]) ->
+in_move(Field, NewPosition, PlayersInfo, [Active | Passive], Turn_Count, Round) ->
     PlayerInfo = maps:get(Active, PlayersInfo),
 
     case maps:find(NewPosition, Field) of
@@ -369,13 +394,16 @@ in_move(Field, NewPosition, PlayersInfo, [Active | Passive]) ->
                 Active,
                 PlayerInfo#player_info{position = NewPosition},
                 PlayersInfo),
+            {Order, New_Turn_Count, New_Round} = change_order([Active | Passive], Turn_Count, Round),
 
             {
                 multi,
                 <<"Next turn">>,
                 Field2,
                 NewPlayersInfo,
-                change_order([Active | Passive])
+                Order,
+                New_Turn_Count,
+                New_Round
             };
 
         _ ->
@@ -408,18 +436,25 @@ gen_empty_field(FieldHeight, FieldWidth, Acc,
                     FieldHeight_orig, FieldWidth_orig).
 
 
-change_order([Active|Passive])->
+change_order([Active|Passive], 1, Round)->
+    New_Round = check_round(Round),
     Order = lists:append(Passive, [Active]),
-    Order.
+    Turn = length(Order),
+    [Active1|Passive2] =Order,                  % две строчки кода, для того, чтобы
+    Order2 = lists:append(Passive2, [Active1]), % менять первого игрока в начале раунда
+    {Order2, Turn, New_Round};
+change_order([Active|Passive], Turn_Count, Round)->
+    Order = lists:append(Passive, [Active]),
+    {Order, Turn_Count-1, Round}.
 
 
-lose_condition(_Field, _PlayersInfo, _, Order) when length(Order) == 1 ->
-    Order;
+lose_condition(_Field, _PlayersInfo, _, Order, Turn_Count) when length(Order) == 1 ->
+    {Order, Turn_Count};
 
-lose_condition(_Field, _PlayersInfo, [], Order) ->
-    Order;
+lose_condition(_Field, _PlayersInfo, [], Order, Turn_Count) ->
+    {Order, Turn_Count};
 
-lose_condition(Field, PlayersInfo, [Active|Others], Order)->
+lose_condition(Field, PlayersInfo, [Active|Others], Order, Turn_Count)->
     #player_info{position = Position, mark = Mark} =
         maps:get(Active, PlayersInfo),
 
@@ -427,13 +462,13 @@ lose_condition(Field, PlayersInfo, [Active|Others], Order)->
 
     case find_direction(Field, Position, Directions) of
         ok ->
-            lose_condition(Field, PlayersInfo, Others, Order);
+            lose_condition(Field, PlayersInfo, Others, Order, Turn_Count);
 
         lose ->
             lager:info("Player ~p lose", [Mark]),
             Order2 = lists:delete(Active, Order),
             multicast(<<"You lose!\n">>, [Active]),
-            lose_condition(Field, PlayersInfo, Others, Order2)
+            lose_condition(Field, PlayersInfo, Others, Order2, Turn_Count-1)
     end.
 
 
@@ -687,3 +722,76 @@ award_first_win(PlayerId, PlayerPid) ->
                       [PlayerPid])
     end.
 
+check_round(#round{count = Count, status = Status}) ->
+    case Count + 1 of
+        Count2 when Count2 rem 5 == 0->
+            Status2 = set_fire,
+            lager:info("Round ~p with status ~p", [Count, Status]),
+            #round{count= Count2, status = Status2};
+        Count2 when (Count2+1) rem 5 == 0 ->
+            Status2 = prepared_fire,
+            lager:info("Round ~p with status ~p", [Count, Status]),
+            #round{count= Count2, status = Status2};
+        Count2 -> lager:info("Round ~p with status ~p", [Count, Status]),
+            #round{count= Count2, status = Status}
+    end.
+
+
+set_fire(Msg, Field, #round{status = Status} = Round, Fire) ->
+    Direction = [<<"North">>, <<"South">>, <<"West">>, <<"East">>],
+    case Status of
+        inactive -> {Msg, Field, Round, Fire};
+        prepared_fire -> Wind = lists:nth(rand:uniform(length(Direction)), Direction),
+            Msg1 = <<"The Wind is blowing from the ", Wind/binary, "\n", Msg/binary>>,
+            case maps:find(Wind, Fire) of
+                {ok, Wind_Power} ->{Msg1, Field, Round#round{status = inactive}, maps:update(Wind, Wind_Power+1, Fire)};
+                error -> {Msg1, Field, Round#round{status = inactive}, maps:put(Wind, 0, Fire)}
+            end;
+
+        set_fire ->
+            Field2 = fire(Field, Fire),
+            {<<Msg/binary>>, Field2, Round#round{status = inactive}, Fire}
+    end.
+
+fire(Field, Fire) ->
+    {ok, Size} = application:get_env(polyana, battle_field_size),
+    fire(maps:keys(Fire), Field, Fire, Size).
+fire([], Field, _Fire, _Size) -> Field;
+fire([<<"North">>|Directions],Field, Fire, Size) ->
+    Y = maps:get(<<"North">>, Fire),
+    Seq = lists:seq(0, Size),
+    Field2 = lists:foldl(fun(X, Acc) ->
+        case maps:find({Y,X}, Acc) of
+            Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} -> Acc#{{Y,X}:= <<"F">>};
+            _ -> Acc
+        end end, Field, Seq),
+    fire(Directions, Field2, Fire, Size);
+fire([<<"South">>|Directions],Field, Fire, Size) ->
+    Y = maps:get(<<"South">>, Fire),
+    Y2 = Size - Y,
+    Seq = lists:seq(0, Size),
+    Field2 = lists:foldl(fun(X, Acc) ->
+        case maps:find({Y2,X}, Acc) of
+            Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} -> Acc#{{Y2,X}:= <<"F">>};
+            _ -> Acc
+        end end, Field, Seq),
+    fire(Directions, Field2, Fire, Size);
+fire([<<"West">>|Directions],Field, Fire, Size) ->
+    X = maps:get(<<"West">>, Fire),
+    Seq = lists:seq(0, Size),
+    Field2 = lists:foldl(fun(Y, Acc) ->
+        case maps:find({Y,X}, Acc) of
+            Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} -> Acc#{{Y,X}:= <<"F">>};
+            _ -> Acc
+        end end, Field, Seq),
+    fire(Directions, Field2, Fire, Size);
+fire([<<"East">>|Directions],Field, Fire, Size) ->
+    X = maps:get(<<"East">>, Fire),
+    X2 = Size - X,
+    Seq = lists:seq(0, Size),
+    Field2 = lists:foldl(fun(Y, Acc) ->
+        case maps:find({Y,X2}, Acc) of
+            Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} -> Acc#{{Y,X2}:= <<"F">>};
+            _ -> Acc
+        end end, Field, Seq),
+    fire(Directions, Field2, Fire, Size).
