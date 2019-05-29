@@ -6,3 +6,4 @@ def event_save(player, event_type):
     event.player = player
     event.event_type = event_type
     event.save()
+    return event
