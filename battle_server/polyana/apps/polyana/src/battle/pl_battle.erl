@@ -746,11 +746,11 @@ award_first_win(PlayerId, PlayerPid) ->
 
 check_round(#round{count = Count, status = Status}) ->
     case Count + 1 of
-        Count2 when Count2 rem 5 == 0->
+        Count2 when Count2 rem 4 == 0->
             Status2 = set_fire,
             lager:info("Round ~p with status ~p", [Count, Status]),
             #round{count= Count2, status = Status2};
-        Count2 when (Count2+1) rem 5 == 0 ->
+        Count2 when (Count2+1) rem 4 == 0 ->
             Status2 = prepared_fire,
             lager:info("Round ~p with status ~p", [Count, Status]),
             #round{count= Count2, status = Status2};
