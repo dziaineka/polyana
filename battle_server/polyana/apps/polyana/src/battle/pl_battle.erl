@@ -443,8 +443,13 @@ gen_empty_field(-1, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
 
 gen_empty_field(FieldHeight, FieldWidth, Acc,
                 FieldHeight_orig, FieldWidth_orig) ->
+    NotStartPosition = not_start_position(FieldHeight,
+                                          FieldWidth,
+                                          FieldHeight_orig,
+                                          FieldWidth_orig),
+
     case rand:uniform(8) of
-        1 ->
+        1 when NotStartPosition ->
             Acc2 = Acc#{{FieldHeight,FieldWidth} => <<"X">>};
 
         _ ->
@@ -455,7 +460,22 @@ gen_empty_field(FieldHeight, FieldWidth, Acc,
                     FieldHeight_orig, FieldWidth_orig).
 
 
-change_order([Active|Passive], 1, Round)->
+not_start_position(FieldHeight,
+                   FieldWidth,
+                   FieldHeight_orig,
+                   FieldWidth_orig) ->
+    HeightFits = (FieldHeight > 1) and (FieldHeight < (FieldHeight_orig - 1)),
+    WidthFits = (FieldWidth > 1) and (FieldWidth < (FieldWidth_orig - 1)),
+
+    if
+        HeightFits orelse WidthFits ->
+            true;
+
+        true ->
+            false
+    end.
+
+change_order([Active|Passive], 1, Round) ->
     New_Round = check_round(Round),
     Order = lists:append(Passive, [Active]),
     Turn = length(Order),
