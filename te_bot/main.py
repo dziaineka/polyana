@@ -354,7 +354,7 @@ def render_battle_map(battle_map):
     battle_map = battle_map.replace('C wins', '😱 wins')
     battle_map = battle_map.replace('D wins', '😸 wins')
     battle_map = battle_map.replace(' X ', '💩')
-    battle_map = battle_map.replace(' F ', '💩')
+    battle_map = battle_map.replace(' F ', '🔥')
     battle_map = battle_map.replace('   ', '🌎')
     battle_map = battle_map.replace('|', '')
     battle_map = battle_map.replace('-', '')
