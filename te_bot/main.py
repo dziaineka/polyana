@@ -165,6 +165,11 @@ async def process_reg_battle_bid(message: types.Message, state: FSMContext):
                         reply_markup=kb.inline_kb_currency)
 
 
+@dp.message_handler(state=Form.reg_battle)
+async def process_battle_waiting(message: types.Message, state: FSMContext):
+    await message.reply("Ожидаем начало боя...")
+
+
 @dp.callback_query_handler(lambda c: c.data == 'currency_silver',
                            state=Form.reg_battle_currency)
 async def process_silver(callback_query, state: FSMContext):
