@@ -1,30 +1,18 @@
 import asyncio
-from typing import Optional
-
-import sys
-import telnetlib
-import time
-import requests
 import re
+import time
 
-import storage as connect
-
-from aiogram.types import ReplyKeyboardRemove, \
-    ReplyKeyboardMarkup, KeyboardButton, \
-    InlineKeyboardMarkup, InlineKeyboardButton
-
-import aiogram.utils.markdown as md
+import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
-from aiogram.types import ParseMode
 from aiogram.utils import executor
-from states import Form
 
 import keyboards as kb
+import storage as connect
+from states import Form
 
-
-API_TOKEN = 'PUT_YOUR_TOKEN_HERE'
+API_TOKEN = '584143393:AAED-5U6R6XHoMtONSuLt_s2VE0v32TT_04'
 
 loop = asyncio.get_event_loop()
 bot = Bot(token=API_TOKEN, loop=loop)
@@ -118,7 +106,7 @@ async def process_password_auth(message: types.Message, state: FSMContext):
         time.sleep(0.2)
 
         tn.write(b'AUTH ' + Log.encode('ascii') + b' ' +
-                    Pas.encode('ascii') + b'\r\n')
+                 Pas.encode('ascii') + b'\r\n')
 
         time.sleep(0.2)
         answ1 = tn.read_eager()
@@ -229,7 +217,7 @@ async def get_battle_map(answ1, id):
 
                 if battle_map != '':
                     if (battle_map != 'NOT YOUR MOVE! WAIT PLEASE!') and \
-                                (battle_map != 'ERROR, please try once more'):
+                            (battle_map != 'ERROR, please try once more'):
                         await bot.send_message(id,
                                                battle_map,
                                                reply_markup=kb.inline_kb_move)
@@ -336,6 +324,7 @@ async def process_callback_button_quit(callback_query: types.CallbackQuery):
 
     tn = connect_manager.get_connect(callback_query.from_user.id)
     tn.close()
+
 
 if __name__ == '__main__':
     executor.start_polling(dp, loop=loop, skip_updates=True)
