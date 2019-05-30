@@ -6,7 +6,7 @@
     <div class="row">
         <div class="col-md-4">
             <ul class="list-group">
-            <li class="list-group-item">GOLD</li>
+            <h5><li class="list-group-item">GOLD</li></h5>
             {% for key, value in gold.items %}
                 <li class="list-group-item">{{ value.0 }}units <a class="btn btn-primary ml-2" href="{% url 'payment' key=key %}" role="button">{{ value.1 }} BYN<br></a></li>
             {% endfor %}
@@ -14,7 +14,7 @@
         </div>
         <div class="col-md-4">
             <ul class="list-group">
-            <li class="list-group-item">SILVER</li>
+            <h5><li class="list-group-item">SILVER</li></h5>
             {% for key, value in silver.items %}
                 <li class="list-group-item">{{ value.0 }}units <a class="btn btn-primary ml-2" href="{% url 'payment' key=key %}" role="button">{{ value.1 }} BYN<br></a></li>
             {% endfor %}
