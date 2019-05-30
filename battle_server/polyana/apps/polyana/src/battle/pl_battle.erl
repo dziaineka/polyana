@@ -85,13 +85,13 @@ init({CurrencyType, Bid, PlayersWithCurrencies}) ->
     {Players, Currencies} = lists:unzip(PlayersWithCurrencies),
     {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
     {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
-
+    Size = set_mode(Players, FieldHeight, FieldWidth),
     send_battle_pid(Players),
     monitor_players(Players),
     Order = shuffle(Players),
-    PlayersInfo = get_players_info(Players, Currencies, {FieldHeight, FieldWidth}),
-    Field = create_field(PlayersInfo, {FieldHeight, FieldWidth}),
-    StringField = field_to_msg(Field, {FieldHeight, FieldWidth}),
+    PlayersInfo = get_players_info(Players, Currencies, Size),
+    Field = create_field(PlayersInfo, Size),
+    StringField = field_to_msg(Field, Size),
 
     {ok, BattleId} = save_start_game_data(CurrencyType,
                                           Bid,
@@ -106,7 +106,7 @@ init({CurrencyType, Bid, PlayersWithCurrencies}) ->
     State = #state{battle_id = BattleId,
                    players_info = PlayersInfo,
                    battle_field = Field,
-                   battle_field_size = {FieldHeight, FieldWidth},
+                   battle_field_size = Size,
                    turn_order = Order,
                    bid = Bid,
                    currency_type = CurrencyType,
@@ -133,7 +133,7 @@ monitor_players(Players) ->
         Players
     ).
 
-create_field(PlayersInfo, {FieldHeight, FieldWidth}) ->
+create_field(PlayersInfo, {Mode, FieldHeight, FieldWidth}) ->
 %%    {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
 %%    {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
 
@@ -141,7 +141,7 @@ create_field(PlayersInfo, {FieldHeight, FieldWidth}) ->
         fun (_PlayerPid, #player_info{position = Position, mark = Mark}, Acc) ->
             maps:update(Position, Mark, Acc)
         end,
-        gen_empty_field(FieldHeight, FieldWidth),
+        gen_empty_field(Mode, FieldHeight, FieldWidth),
         PlayersInfo
     ).
 
@@ -432,20 +432,26 @@ in_move(Field, NewPosition, PlayersInfo,
     end.
 
 
-gen_empty_field(FieldHeight, FieldWidth) ->
-    gen_empty_field(FieldHeight, FieldWidth, #{}, FieldHeight, FieldWidth).
+gen_empty_field(Mode, FieldHeight, FieldWidth) ->
+    gen_empty_field(Mode, FieldHeight, FieldWidth, #{}, FieldHeight, FieldWidth).
 
 
-gen_empty_field(_M, -1, Acc, _M_orig, _N_orig) ->
+gen_empty_field(_Mode,_M, -1, Acc, _M_orig, _N_orig) ->
     Acc;
 
-gen_empty_field(-1, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
-    gen_empty_field(FieldHeight_orig, FieldWidth-1, Acc,
+gen_empty_field(Mode, -1, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
+    gen_empty_field(Mode, FieldHeight_orig, FieldWidth-1, Acc,
                     FieldHeight_orig, FieldWidth_orig);
 
-gen_empty_field(FieldHeight, FieldWidth, Acc,
+gen_empty_field(duel, FieldHeight, FieldWidth, Acc,
+    FieldHeight_orig, FieldWidth_orig) ->
+      Acc2 = Acc#{{FieldHeight,FieldWidth} => <<"O">>},
+  gen_empty_field(duel, FieldHeight-1, FieldWidth, Acc2,
+    FieldHeight_orig, FieldWidth_orig);
+
+gen_empty_field(royal, FieldHeight, FieldWidth, Acc,
                 FieldHeight_orig, FieldWidth_orig) ->
-    case rand:uniform(8) of
+    case rand:uniform(13) of
         1 ->
             Acc2 = Acc#{{FieldHeight,FieldWidth} => <<"X">>};
 
@@ -453,7 +459,7 @@ gen_empty_field(FieldHeight, FieldWidth, Acc,
             Acc2 = Acc#{{FieldHeight,FieldWidth} => <<"O">>}
     end,
 
-    gen_empty_field(FieldHeight-1, FieldWidth, Acc2,
+    gen_empty_field(royal, FieldHeight-1, FieldWidth, Acc2,
                     FieldHeight_orig, FieldWidth_orig).
 
 
@@ -557,7 +563,7 @@ find_direction(Field, {Y, X}, [right|Directions]) ->
     end.
 
 
-field_to_msg(Field, {SizeFromZero, _})->
+field_to_msg(Field, {_Mode, SizeFromZero, _})->
     {_Positions, CellValues} =
             lists:unzip(lists:keysort(1, maps:to_list(Field))),
 
@@ -630,7 +636,7 @@ get_players_info([PlayerPid | Players],
                      Currencies,
                      PlayersInfo#{PlayerPid => PlayerInfo},Size).
 
-get_initial_field_pos(Number, {FieldHeight, FieldWidth}) ->
+get_initial_field_pos(Number, {_Mode, FieldHeight, FieldWidth}) ->
 %%    {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
 %%    {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
 
@@ -760,8 +766,9 @@ check_round(#round{count = Count, status = Status}) ->
             #round{count= Count2, status = Status}
     end.
 
-
-set_fire(Msg, Field, #round{status = Status} = Round, Fire, Size) ->
+set_fire(Msg, Field, Round, Fire, {duel, _Size, _Nothing})->
+  {Msg, Field, Round, Fire};
+set_fire(Msg, Field, #round{status = Status} = Round, Fire, {royal, Size, _Nothing}) ->
     Direction = [<<"North">>, <<"South">>, <<"West">>, <<"East">>],
     case Status of
         inactive ->
@@ -796,7 +803,7 @@ set_fire(Msg, Field, #round{status = Status} = Round, Fire, Size) ->
             {<<Msg/binary>>, Field2, Round#round{status = inactive}, Fire}
     end.
 
-fire(Field, Fire, {Size, _Nothing}) ->
+fire(Field, Fire, Size) ->
 %%    {ok, Size} = application:get_env(polyana, battle_field_size),
     fire(maps:keys(Fire), Field, Fire, Size).
 
@@ -888,3 +895,9 @@ send_message(PlayersInfo) ->
   PlayersPid = maps:keys(PlayersInfo),
   lists:foreach(fun(PlayerPid)-> #player_info{mark = Mark} = maps:get(PlayerPid, PlayersInfo),
                 PlayerPid ! {message, <<"You are player ", Mark/binary>>}end, PlayersPid).
+
+set_mode(Players, FieldHeight, FieldWidth) ->
+    case length(Players) of
+      4 -> {royal, FieldHeight*2, FieldWidth*2};
+      2 -> {duel, FieldHeight, FieldWidth}
+    end.
