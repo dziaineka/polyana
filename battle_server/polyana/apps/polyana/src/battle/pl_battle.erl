@@ -97,6 +97,8 @@ init({CurrencyType, Bid, PlayersWithCurrencies}) ->
                                           Bid,
                                           PlayersWithCurrencies),
 
+    send_message(PlayersInfo),
+
     invite_players_to_game(PlayersInfo, Order, StringField),
     Turn_Count = length(Order),
     Round = #round{count = 1, status = inactive},
@@ -881,3 +883,8 @@ fire([<<"East">>|Directions],Field, Fire, Size) ->
     ),
 
     fire(Directions, Field2, Fire, Size).
+
+send_message(PlayersInfo) ->
+  PlayersPid = maps:keys(PlayersInfo),
+  lists:foreach(fun(PlayerPid)-> #player_info{mark = Mark} = maps:get(PlayerPid, PlayersInfo),
+                PlayerPid ! {message, <<"You are player ", Mark/binary>>}end, PlayersPid).
