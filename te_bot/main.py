@@ -12,7 +12,7 @@ import keyboards as kb
 import storage as connect
 from states import Form
 
-API_TOKEN = '584143393:AAED-5U6R6XHoMtONSuLt_s2VE0v32TT_04'
+API_TOKEN = 'PUT_YOUR_TOKEN_HERE'
 
 loop = asyncio.get_event_loop()
 bot = Bot(token=API_TOKEN, loop=loop)
