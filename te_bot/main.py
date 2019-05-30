@@ -165,6 +165,11 @@ async def process_reg_battle_bid(message: types.Message, state: FSMContext):
                         reply_markup=kb.inline_kb_currency)
 
 
+@dp.message_handler(state=Form.move)
+async def process_battle_waiting(message: types.Message, state: FSMContext):
+    await message.reply("Нужно сделать ход 👈👆👇👉")
+
+
 @dp.message_handler(state=Form.reg_battle)
 async def process_battle_waiting(message: types.Message, state: FSMContext):
     await message.reply("Ожидаем начало боя...")
@@ -390,7 +395,7 @@ async def process_callback_button_quit(callback_query: types.CallbackQuery):
     await Form.idle.set()
 
 
-@dp.callback_query_handler()
+@dp.callback_query_handler(state='*')
 async def process_callback_button_quit(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(callback_query.from_user.id,
