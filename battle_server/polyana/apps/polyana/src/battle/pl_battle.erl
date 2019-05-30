@@ -379,8 +379,6 @@ get_strbin_bank(CurrencyFrom, CurrencyTo, Bank) ->
     Sum = integer_to_binary(pl_storage_srv:exchange_currency(CurrencyFrom,
                                                              CurrencyTo,
                                                              Bank)),
-    lager:warning("get_strbin_bank ~p", [<<Sum/binary, " ", CurrencyTo/binary>>]),
-
     <<Sum/binary, " ", CurrencyTo/binary>>.
 
 move(PlayerPid, Direction, Field, PlayersInfo,
