@@ -288,14 +288,11 @@ handle_info({'DOWN', _Ref, process, PlayerPid, Info},
                    turn_order = TurnOrder,
                    players_info = PlayersInfo,
                    battle_field_size = Size,
-                    turn_count = Turn_Count,
-                    round = Round,
-                    fire = Fire} = State) ->
+                   turn_count = Turn_Count,
+                   round = Round,
+                   fire = Fire} = State) ->
     lager:info("Player down, he is lost ~p ~p", [PlayerPid, Info]),
     #player_info{mark = Mark} = maps:get(PlayerPid, PlayersInfo),
-
-    % multicast([<<"Player ",Mark/binary, " is gone.\n", "Send any command.\n">>],
-    %           TurnOrder),
 
     Msg = <<"Player ",Mark/binary, " is gone.\n">>,
 
@@ -320,14 +317,21 @@ code_change(_OldVsn, State, _Extra) ->
 
 check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg,
     Turn_Count2, New_Round, Fire) ->
-    {NewMsg, NewField2, Round2, Fire2} = set_fire(Msg, NewField, New_Round, Fire),
-    {Order3, Turn_Count3} = lose_condition(NewField2, NewPlayersInfo, NewOrder, NewOrder, Turn_Count2),
-    StringField = field_to_msg(NewField, Size),
+    {NewMsg, NewField2, Round2, Fire2} =
+        set_fire(Msg, NewField, New_Round, Fire),
+
+    {Order3, Turn_Count3} = lose_condition(NewField2,
+                                           NewPlayersInfo,
+                                           NewOrder,
+                                           NewOrder,
+                                           Turn_Count2),
+
+    StringField = field_to_msg(NewField2, Size),
     NewPlayersList = maps:keys(NewPlayersInfo),
 
     case win_condition(Order3, NewPlayersInfo) of
         next ->
-            State2 = State#state{battle_field = NewField,
+            State2 = State#state{battle_field = NewField2,
                                 players_info = NewPlayersInfo,
                                 turn_order = Order3,
                                 turn_count = Turn_Count3,
@@ -350,7 +354,9 @@ check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg,
                                 turn_order = Order3,
                                 winner = WinnerPid},
 
-            Reply = <<(list_to_binary(StringField))/binary, WinMessage/binary, "\n">>,
+            Reply = <<(list_to_binary(StringField))/binary,
+                      WinMessage/binary, "\n">>,
+
             multicast(Reply, NewPlayersList),
 
             stop(self()),
@@ -359,7 +365,8 @@ check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg,
     end.
 
 move(PlayerPid, Direction, Field, PlayersInfo,
-            [Active|_Passive] = Order, Turn_Count, Round) when Active == PlayerPid ->
+                [Active|_Passive] = Order, Turn_Count,
+                Round) when Active == PlayerPid ->
     PlayerInfo = maps:get(Active, PlayersInfo),
     {Y, X} = PlayerInfo#player_info.position,
 
@@ -378,11 +385,13 @@ move(PlayerPid, Direction, Field, PlayersInfo,
     end;
 
 move(PlayerPid, _Direction, Field, _PlayersPos,
-            [Active|_Passive]=Order, Turn_Count, Round) when Active=/= PlayerPid ->
+            [Active|_Passive]=Order, Turn_Count,
+            Round) when Active=/= PlayerPid ->
     {nok, <<"Not your turn">>, Field, PlayerPid, Order, Turn_Count, Round}.
 
 
-in_move(Field, NewPosition, PlayersInfo, [Active | Passive], Turn_Count, Round) ->
+in_move(Field, NewPosition, PlayersInfo,
+        [Active | Passive], Turn_Count, Round) ->
     PlayerInfo = maps:get(Active, PlayersInfo),
 
     case maps:find(NewPosition, Field) of
@@ -394,7 +403,9 @@ in_move(Field, NewPosition, PlayersInfo, [Active | Passive], Turn_Count, Round) 
                 Active,
                 PlayerInfo#player_info{position = NewPosition},
                 PlayersInfo),
-            {Order, New_Turn_Count, New_Round} = change_order([Active | Passive], Turn_Count, Round),
+
+            {Order, New_Turn_Count, New_Round} =
+                change_order([Active | Passive], Turn_Count, Round),
 
             {
                 multi,
@@ -407,7 +418,15 @@ in_move(Field, NewPosition, PlayersInfo, [Active | Passive], Turn_Count, Round) 
             };
 
         _ ->
-            {single, <<"NO WAY">>, Field, [Active], [Active | Passive]}
+            {
+                single,
+                <<"NO WAY">>,
+                Field,
+                [Active],
+                [Active | Passive],
+                Turn_Count,
+                Round
+            }
     end.
 
 
@@ -424,7 +443,7 @@ gen_empty_field(-1, FieldWidth, Acc, FieldHeight_orig, FieldWidth_orig) ->
 
 gen_empty_field(FieldHeight, FieldWidth, Acc,
                 FieldHeight_orig, FieldWidth_orig) ->
-    case rand:uniform(5) of
+    case rand:uniform(8) of
         1 ->
             Acc2 = Acc#{{FieldHeight,FieldWidth} => <<"X">>};
 
@@ -440,15 +459,17 @@ change_order([Active|Passive], 1, Round)->
     New_Round = check_round(Round),
     Order = lists:append(Passive, [Active]),
     Turn = length(Order),
-    [Active1|Passive2] =Order,                  % две строчки кода, для того, чтобы
-    Order2 = lists:append(Passive2, [Active1]), % менять первого игрока в начале раунда
-    {Order2, Turn, New_Round};
+%%    Пока убираем замену первого игрока в новом раунде
+%%    [Active1|Passive2] =Order,                  % две строчки кода, для того, чтобы
+%%    Order2 = lists:append(Passive2, [Active1]), % менять первого игрока в начале раунда
+    {Order, Turn, New_Round};
 change_order([Active|Passive], Turn_Count, Round)->
     Order = lists:append(Passive, [Active]),
     {Order, Turn_Count-1, Round}.
 
 
-lose_condition(_Field, _PlayersInfo, _, Order, Turn_Count) when length(Order) == 1 ->
+lose_condition(_Field, _PlayersInfo, _, Order, Turn_Count)
+            when length(Order) == 1 ->
     {Order, Turn_Count};
 
 lose_condition(_Field, _PlayersInfo, [], Order, Turn_Count) ->
@@ -603,7 +624,9 @@ get_players_info([PlayerPid | Players],
                         mark = get_mark(length(Players) + 1),
                         id = pl_player_srv:get_id(PlayerPid)},
 
-    get_players_info(Players, Currencies, PlayersInfo#{PlayerPid => PlayerInfo}).
+    get_players_info(Players,
+                     Currencies,
+                     PlayersInfo#{PlayerPid => PlayerInfo}).
 
 get_initial_field_pos(Number) ->
     {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
@@ -621,9 +644,6 @@ get_mark(Number) ->
     lists:nth(Number, Marks).
 
 save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
-    WinnerId = pl_player_srv:get_id(WinnerPid),
-    ok = pl_storage_srv:save_winner(BattleId, WinnerId),
-
     lists:foreach(
         fun ({PlayerPid, #player_info{currency_type = PlayerCurrencyType,
                                        id = PlayerId}}) ->
@@ -633,8 +653,10 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
                                                       PlayerId),
             ok = award_achievements(PlayerId, PlayerPid),
 
-            case (WinnerId == PlayerId) of
+            case (WinnerPid == PlayerPid) of
                 true ->
+                    % сохраняем игрока как победителя игры
+                    ok = pl_storage_srv:save_winner(BattleId, PlayerId),
                     % добавим единичку к выигранным
                     pl_storage_srv:add_won_game(PlayerId),
                     % пересчитаем винрейт
@@ -643,7 +665,7 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
                     % переведем победителю банк
                     pl_storage_srv:save_transaction(
                         EventId,
-                        WinnerId,
+                        PlayerId,
                         PlayerCurrencyType,
                         pl_storage_srv:exchange_currency(
                                         CurrencyType,
@@ -668,9 +690,6 @@ award_5_battles(PlayerId, PlayerPid) ->
         pl_storage_srv:check_achievement_ownership(PlayerId, '5_battles'),
 
     case {BattlesAmount, AchievementAlreadyReceived} of
-        {_, true} ->
-            ok;
-
         {BattlesAmount, false} when BattlesAmount >= 5 ->
             {ok, AchievementId} =
                 pl_storage_srv:save_achievement(PlayerId, '5_battles'),
@@ -679,7 +698,10 @@ award_5_battles(PlayerId, PlayerPid) ->
                 pl_storage_srv:save_event(achievement, AchievementId, PlayerId),
 
             multicast(<<"Achievement unlocked! 5 battles played!">>,
-                      [PlayerPid])
+                      [PlayerPid]);
+
+        _ ->
+            ok
     end.
 
 award_5_wins(PlayerId, PlayerPid) ->
@@ -688,9 +710,6 @@ award_5_wins(PlayerId, PlayerPid) ->
         pl_storage_srv:check_achievement_ownership(PlayerId, '5_wins'),
 
     case {WinsAmount, AchievementAlreadyReceived} of
-        {_, true} ->
-            ok;
-
         {WinsAmount, false} when WinsAmount >= 5 ->
             {ok, AchievementId} =
                 pl_storage_srv:save_achievement(PlayerId, '5_wins'),
@@ -699,7 +718,10 @@ award_5_wins(PlayerId, PlayerPid) ->
                 pl_storage_srv:save_event(achievement, AchievementId, PlayerId),
 
             multicast(<<"Achievement unlocked! 5 battles won!">>,
-                      [PlayerPid])
+                      [PlayerPid]);
+
+        _ ->
+            ok
     end.
 
 award_first_win(PlayerId, PlayerPid) ->
@@ -708,9 +730,6 @@ award_first_win(PlayerId, PlayerPid) ->
         pl_storage_srv:check_achievement_ownership(PlayerId, first_win),
 
     case {WinsAmount, AchievementAlreadyReceived} of
-        {_, true} ->
-            ok;
-
         {WinsAmount, false} when WinsAmount >= 1 ->
             {ok, AchievementId} =
                 pl_storage_srv:save_achievement(PlayerId, first_win),
@@ -719,16 +738,19 @@ award_first_win(PlayerId, PlayerPid) ->
                 pl_storage_srv:save_event(achievement, AchievementId, PlayerId),
 
             multicast(<<"Achievement unlocked! First win!">>,
-                      [PlayerPid])
+                      [PlayerPid]);
+
+        _ ->
+            ok
     end.
 
 check_round(#round{count = Count, status = Status}) ->
     case Count + 1 of
-        Count2 when Count2 rem 5 == 0->
+        Count2 when Count2 rem 4 == 0->
             Status2 = set_fire,
             lager:info("Round ~p with status ~p", [Count, Status]),
             #round{count= Count2, status = Status2};
-        Count2 when (Count2+1) rem 5 == 0 ->
+        Count2 when (Count2+1) rem 4 == 0 ->
             Status2 = prepared_fire,
             lager:info("Round ~p with status ~p", [Count, Status]),
             #round{count= Count2, status = Status2};
@@ -740,12 +762,31 @@ check_round(#round{count = Count, status = Status}) ->
 set_fire(Msg, Field, #round{status = Status} = Round, Fire) ->
     Direction = [<<"North">>, <<"South">>, <<"West">>, <<"East">>],
     case Status of
-        inactive -> {Msg, Field, Round, Fire};
-        prepared_fire -> Wind = lists:nth(rand:uniform(length(Direction)), Direction),
-            Msg1 = <<"The Wind is blowing from the ", Wind/binary, "\n", Msg/binary>>,
+        inactive ->
+            {Msg, Field, Round, Fire};
+
+        prepared_fire ->
+            Wind = lists:nth(rand:uniform(length(Direction)), Direction),
+
+            Msg1 = <<"The Wind is blowing from the ",
+                     Wind/binary, "\n", Msg/binary>>,
+
             case maps:find(Wind, Fire) of
-                {ok, Wind_Power} ->{Msg1, Field, Round#round{status = inactive}, maps:update(Wind, Wind_Power+1, Fire)};
-                error -> {Msg1, Field, Round#round{status = inactive}, maps:put(Wind, 0, Fire)}
+                {ok, Wind_Power} ->
+                    {
+                        Msg1,
+                        Field,
+                        Round#round{status = inactive},
+                        maps:update(Wind, Wind_Power+1, Fire)
+                    };
+
+                error ->
+                    {
+                        Msg1,
+                        Field,
+                        Round#round{status = inactive},
+                        maps:put(Wind, 0, Fire)
+                    }
             end;
 
         set_fire ->
@@ -756,42 +797,87 @@ set_fire(Msg, Field, #round{status = Status} = Round, Fire) ->
 fire(Field, Fire) ->
     {ok, Size} = application:get_env(polyana, battle_field_size),
     fire(maps:keys(Fire), Field, Fire, Size).
-fire([], Field, _Fire, _Size) -> Field;
+
+fire([], Field, _Fire, _Size) ->
+    Field;
+
 fire([<<"North">>|Directions],Field, Fire, Size) ->
     Y = maps:get(<<"North">>, Fire),
     Seq = lists:seq(0, Size),
-    Field2 = lists:foldl(fun(X, Acc) ->
-        case maps:find({Y,X}, Acc) of
-            Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} -> Acc#{{Y,X}:= <<"F">>};
-            _ -> Acc
-        end end, Field, Seq),
-    fire(Directions, Field2, Fire, Size);
+
+    Field2 = lists:foldl(
+        fun(X, Acc) ->
+            case maps:find({Y,X}, Acc) of
+                Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} ->
+                    Acc#{{Y,X}:= <<"F">>};
+
+                _ ->
+                    Acc
+            end
+        end,
+        Field,
+        Seq
+    ),
+
+fire(Directions, Field2, Fire, Size);
+
 fire([<<"South">>|Directions],Field, Fire, Size) ->
     Y = maps:get(<<"South">>, Fire),
     Y2 = Size - Y,
     Seq = lists:seq(0, Size),
-    Field2 = lists:foldl(fun(X, Acc) ->
-        case maps:find({Y2,X}, Acc) of
-            Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} -> Acc#{{Y2,X}:= <<"F">>};
-            _ -> Acc
-        end end, Field, Seq),
+
+    Field2 = lists:foldl(
+        fun(X, Acc) ->
+            case maps:find({Y2,X}, Acc) of
+                Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} ->
+                    Acc#{{Y2,X}:= <<"F">>};
+
+                _ ->
+                    Acc
+            end
+        end,
+        Field,
+        Seq
+    ),
+
     fire(Directions, Field2, Fire, Size);
+
 fire([<<"West">>|Directions],Field, Fire, Size) ->
     X = maps:get(<<"West">>, Fire),
     Seq = lists:seq(0, Size),
-    Field2 = lists:foldl(fun(Y, Acc) ->
-        case maps:find({Y,X}, Acc) of
-            Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} -> Acc#{{Y,X}:= <<"F">>};
-            _ -> Acc
-        end end, Field, Seq),
+
+    Field2 = lists:foldl(
+        fun(Y, Acc) ->
+            case maps:find({Y,X}, Acc) of
+                Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} ->
+                    Acc#{{Y,X}:= <<"F">>};
+
+                _ ->
+                    Acc
+            end
+        end,
+        Field,
+        Seq
+    ),
+
     fire(Directions, Field2, Fire, Size);
+
 fire([<<"East">>|Directions],Field, Fire, Size) ->
     X = maps:get(<<"East">>, Fire),
     X2 = Size - X,
     Seq = lists:seq(0, Size),
-    Field2 = lists:foldl(fun(Y, Acc) ->
-        case maps:find({Y,X2}, Acc) of
-            Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} -> Acc#{{Y,X2}:= <<"F">>};
-            _ -> Acc
-        end end, Field, Seq),
+    Field2 = lists:foldl(
+        fun(Y, Acc) ->
+            case maps:find({Y,X2}, Acc) of
+                Value when Value == {ok, <<"O">>}; Value == {ok, <<"X">>} ->
+                    Acc#{{Y,X2}:= <<"F">>};
+
+                _ ->
+                    Acc
+            end
+        end,
+        Field,
+        Seq
+    ),
+
     fire(Directions, Field2, Fire, Size).

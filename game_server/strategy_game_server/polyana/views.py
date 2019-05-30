@@ -11,15 +11,25 @@ from django.utils.decorators import method_decorator
 from hashlib import md5
 import json
 
+from .constants import GOLD, SILVER
 from .forms import (
     ApiRegistrationForm,
     ApiLoginForm,
     ApiStatsForm,
-    RegistrationForm
+    RegistrationForm,
+    PaymentForm,
 )
+
+from .helpers.player import create_player
 from .helpers.token import get_token, get_token_expiration
+from .helpers.transaction_money import (
+    transaction_save, 
+    money_save, 
+    account_replenishment_after_registration
+    )
+
 from .helpers.event import event_save
-from .models import Player, Event
+from .models import Player, Event, Transaction, Money, Currency
 
 
 class ApiRegistrationView(View):
@@ -27,21 +37,17 @@ class ApiRegistrationView(View):
     def post(self, request):
         form = ApiRegistrationForm(request.POST)
         if form.is_valid():
-            player = form.save(commit=False)
-            player.password = md5(player.password.encode()).hexdigest() 
-            player.token = get_token()
-            player.token_expiration = get_token_expiration()
-            player.save()
 
             user = User()
+            user.save()
+            player = create_player(user, form.cleaned_data['nickname'], form.cleaned_data['password'])
             user.username = player.nickname
-            user.password = player.password
+            user.set_password(form.cleaned_data['password'])
             user.save()
 
-            player.user_id = user
-            player.save()
+            event = event_save(player, 'registration')
 
-            event_save(player, 'registration')
+            account_replenishment_after_registration(event, player)
 
             return HttpResponse(
                 json.dumps({
@@ -104,6 +110,7 @@ class ApiLoginView(View):
 
         player.token_expiration = get_token_expiration()
         player.save()
+
         event_save(player, 'login')
 
         return HttpResponse(
@@ -193,15 +200,9 @@ class RegistrationView(View):
         form = RegistrationForm(request.POST)
         if form.is_valid():
             user = form.save()
-
-            player = Player()
-            player.nickname = form.cleaned_data.get('username')
-            player.password = md5(form.cleaned_data.get('password1').encode()).hexdigest()
-            player.token = get_token()
-            player.token_expiration = get_token_expiration()
-            player.user_id = user
-            player.save()
-            event_save(player, 'registration')
+            player = create_player(user, form.cleaned_data.get('username'), form.cleaned_data.get('password1'))
+            event = event_save(player, 'registration')
+            account_replenishment_after_registration(event, player)
 
             raw_password = form.cleaned_data.get('password1')
             user = authenticate(username=user.username, password=raw_password)
@@ -222,11 +223,12 @@ class HomePageView(View):
     def get(self, request):
         try:
             player = Player.objects.get(user_id=self.request.user)
-            leaders = Player.objects.order_by('-winrate')[0:10]
+            leaders = Player.objects.all().order_by('-winrate')[0:10]
+            money = Money.objects.filter(player_id=player)
         except Player.DoesNotExist as e:
             return HttpResponse('Error 404')
 
-        return render(request, 'polyana/home.html', {'player': player, 'leaders': leaders})
+        return render(request, 'polyana/home.html', {'player': player, 'leaders': leaders, 'money': money})
 
 
 
@@ -252,3 +254,47 @@ class MyLogoutView(LogoutView):
         event_save(Player.objects.get(user_id=self.request.user), 'logout')
         response = super().dispatch(request, *args, **kwargs)
         return response
+
+
+class ShopView(View):
+
+    def get(self, request):
+        return render(request, 'polyana/shop.html', {'gold': GOLD, 'silver': SILVER})
+
+
+class PaymentView(View):
+
+    def validate_product_id_param(self, product_id):
+        if product_id in GOLD:
+            game_currency, money_amount = GOLD[product_id]
+            return {'currency': 'GOLD', 'game_currency': game_currency}
+        elif product_id in SILVER:
+            game_currency, money_amount = SILVER[product_id]
+            return {'currency': 'SILVER', 'game_currency': game_currency}
+        else:
+            return None
+
+    def post(self, request, key):
+        data = request.POST.copy()
+        data.update({'key_currency': key})
+
+        form = PaymentForm(data)
+        if form.is_valid():
+            product = self.validate_product_id_param(data['key_currency'])
+            game_currency = product['game_currency']
+            if product is None:
+                return render(request, 'polyana/temp_errors/404.html', context={'error': 'No such product'}, status=400)
+
+            player = Player.objects.get(user_id=self.request.user)
+            event = event_save(player, 'money_buying')
+            currency = Currency.objects.get(currency_type=product['currency'])
+            transaction_save(event, player, currency, game_currency)
+            money_save(player, currency, game_currency)
+
+            return redirect('home')
+
+        return render(request, 'polyana/payment.html', {'form': form})
+
+    def get(self, request, key):
+        form = PaymentForm()
+        return render(request, 'polyana/payment.html', {'form': form})
