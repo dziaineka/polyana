@@ -104,6 +104,7 @@ async def process_callback_button2(callback_query: types.CallbackQuery):
 async def process_login_auth(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['login'] = message.text
+
     await Form.password_auth.set()
     await bot.send_message(message.chat.id, "Вход: введите пароль")
 
@@ -137,9 +138,30 @@ async def process_password_auth(message: types.Message, state: FSMContext):
 
 @dp.callback_query_handler(lambda c: c.data == 'button_battle',
                            state=Form.authenticated_idle)
-async def process_callback_button_battle(callback_query: types.CallbackQuery):
+async def process_callback_button_battle(callback_query: types.CallbackQuery,
+                                         state: FSMContext):
     await bot.answer_callback_query(callback_query.id)
     await Form.reg_battle_bid.set()
+
+    async with state.proxy() as data:
+        data['battle_type'] = 'head_to_head'
+
+    await bot.send_message(callback_query.from_user.id,
+                           'Входим в игровую комнату...')
+
+    await bot.send_message(callback_query.from_user.id,
+                           'Введите вашу ставку')
+
+
+@dp.callback_query_handler(lambda c: c.data == 'button_royale',
+                           state=Form.authenticated_idle)
+async def process_callback_button_royale(callback_query: types.CallbackQuery,
+                                         state: FSMContext):
+    await bot.answer_callback_query(callback_query.id)
+    await Form.reg_battle_bid.set()
+
+    async with state.proxy() as data:
+        data['battle_type'] = 'battle_royale'
 
     await bot.send_message(callback_query.from_user.id,
                            'Входим в игровую комнату...')
@@ -183,6 +205,9 @@ async def process_silver(callback_query, state: FSMContext):
     await bot.send_message(callback_query.from_user.id,
                            "Пробуем начать бой...")
 
+    tn = connect_manager.get_connect(callback_query.from_user.id)
+    time.sleep(0.1)
+
     async with state.proxy() as data:
         data['reg_battle_currency'] = 'SILVER'
 
@@ -190,11 +215,12 @@ async def process_silver(callback_query, state: FSMContext):
         bid = data['reg_battle_bid']
         currency = data['reg_battle_currency']
 
-    tn = connect_manager.get_connect(callback_query.from_user.id)
-    time.sleep(0.1)
-
-    tn.write(b'BATTLE ' + str(bid).encode('ascii') + b' ' +
-             currency.encode('ascii') + b'\r\n')
+        if data['battle_type'] == 'battle_royale':
+            tn.write(b'ROYALE ' + str(bid).encode('ascii') + b' ' +
+                     currency.encode('ascii') + b'\r\n')
+        else:  # head_to_head
+            tn.write(b'BATTLE ' + str(bid).encode('ascii') + b' ' +
+                     currency.encode('ascii') + b'\r\n')
 
     time.sleep(0.1)
     await check_oponent(callback_query.from_user.id)
@@ -257,18 +283,7 @@ async def get_battle_map(answ1, id):
                 await re_battle(id, battle_map)
                 await Form.authenticated_idle.set()
             else:
-                battle_map = battle_map.decode('ascii')
-                battle_map = battle_map.replace(' A ', '😎')
-                battle_map = battle_map.replace('player A', 'player 😎')
-                battle_map = battle_map.replace('A wins', '😎 wins')
-                battle_map = battle_map.replace(' B ', '😈')
-                battle_map = battle_map.replace('player B', 'player 😈')
-                battle_map = battle_map.replace('B wins', '😈 wins')
-                battle_map = battle_map.replace(' X ', '💩')
-                battle_map = battle_map.replace(' F ', '🔥')
-                battle_map = battle_map.replace('   ', '🌎')
-                battle_map = battle_map.replace('|', '')
-                battle_map = battle_map.replace('-', '')
+                battle_map = render_battle_map(battle_map)
 
                 if battle_map != '':
                     if (battle_map != 'NOT YOUR MOVE! WAIT PLEASE!') and \
@@ -324,23 +339,34 @@ async def check_oponent(id):
             await get_battle_map(battle_map, id)
 
 
-async def re_battle(id, battle_map):
-    await Form.next()
-
+def render_battle_map(battle_map):
     battle_map = battle_map.decode('ascii')
     battle_map = battle_map.replace(' A ', '😎')
-    battle_map = battle_map.replace('player A', 'player 😎')
-    battle_map = battle_map.replace('A wins', '😎 wins')
     battle_map = battle_map.replace(' B ', '😈')
+    battle_map = battle_map.replace(' C ', '😱')
+    battle_map = battle_map.replace(' D ', '😸')
+    battle_map = battle_map.replace('player A', 'player 😎')
     battle_map = battle_map.replace('player B', 'player 😈')
+    battle_map = battle_map.replace('player C', 'player 😱')
+    battle_map = battle_map.replace('player D', 'player 😸')
+    battle_map = battle_map.replace('A wins', '😎 wins')
     battle_map = battle_map.replace('B wins', '😈 wins')
+    battle_map = battle_map.replace('C wins', '😱 wins')
+    battle_map = battle_map.replace('D wins', '😸 wins')
     battle_map = battle_map.replace(' X ', '💩')
     battle_map = battle_map.replace(' F ', '💩')
     battle_map = battle_map.replace('   ', '🌎')
     battle_map = battle_map.replace('|', '')
     battle_map = battle_map.replace('-', '')
 
-    await bot.send_message(id, battle_map, reply_markup=kb.inline_kb_battle)
+    return battle_map
+
+
+async def re_battle(id, battle_map):
+    await Form.next()
+    await bot.send_message(id,
+                           render_battle_map(battle_map),
+                           reply_markup=kb.inline_kb_battle)
 
 
 @dp.callback_query_handler(lambda c: c.data == 'button_up', state=Form.move)
