@@ -89,8 +89,8 @@ init({CurrencyType, Bid, PlayersWithCurrencies}) ->
     send_battle_pid(Players),
     monitor_players(Players),
     Order = shuffle(Players),
-    PlayersInfo = get_players_info(Players, Currencies),
-    Field = create_field(PlayersInfo),
+    PlayersInfo = get_players_info(Players, Currencies, {FieldHeight, FieldWidth}),
+    Field = create_field(PlayersInfo, {FieldHeight, FieldWidth}),
     StringField = field_to_msg(Field, {FieldHeight, FieldWidth}),
 
     {ok, BattleId} = save_start_game_data(CurrencyType,
@@ -131,9 +131,9 @@ monitor_players(Players) ->
         Players
     ).
 
-create_field(PlayersInfo) ->
-    {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
-    {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
+create_field(PlayersInfo, {FieldHeight, FieldWidth}) ->
+%%    {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
+%%    {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
 
     maps:fold(
         fun (_PlayerPid, #player_info{position = Position, mark = Mark}, Acc) ->
@@ -318,7 +318,7 @@ code_change(_OldVsn, State, _Extra) ->
 check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg,
     Turn_Count2, New_Round, Fire) ->
     {NewMsg, NewField2, Round2, Fire2} =
-        set_fire(Msg, NewField, New_Round, Fire),
+        set_fire(Msg, NewField, New_Round, Fire, Size),
 
     {Order3, Turn_Count3} = lose_condition(NewField2,
                                            NewPlayersInfo,
@@ -609,28 +609,28 @@ shuffle(List)->
     [X || {_, X}<- lists:sort(Random_list)].
 
 
-get_players_info(Players, Currencies) ->
-    get_players_info(Players, Currencies, #{}).
+get_players_info(Players, Currencies, Size) ->
+    get_players_info(Players, Currencies, #{}, Size).
 
-get_players_info([], _Currencies, PlayersInfo) ->
+get_players_info([], _Currencies, PlayersInfo, _Size) ->
     PlayersInfo;
 
 get_players_info([PlayerPid | Players],
                  [Currency | Currencies],
-                 PlayersInfo) ->
+                 PlayersInfo, Size) ->
     PlayerInfo = #player_info{
                         currency_type = Currency,
-                        position = get_initial_field_pos(length(Players) + 1),
+                        position = get_initial_field_pos(length(Players) + 1, Size),
                         mark = get_mark(length(Players) + 1),
                         id = pl_player_srv:get_id(PlayerPid)},
 
     get_players_info(Players,
                      Currencies,
-                     PlayersInfo#{PlayerPid => PlayerInfo}).
+                     PlayersInfo#{PlayerPid => PlayerInfo},Size).
 
-get_initial_field_pos(Number) ->
-    {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
-    {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
+get_initial_field_pos(Number, {FieldHeight, FieldWidth}) ->
+%%    {ok, FieldHeight} = application:get_env(polyana, battle_field_size),
+%%    {ok, FieldWidth} = application:get_env(polyana, battle_field_size),
 
     Positions = [{0, 0},
                  {FieldHeight, FieldWidth},
@@ -759,7 +759,7 @@ check_round(#round{count = Count, status = Status}) ->
     end.
 
 
-set_fire(Msg, Field, #round{status = Status} = Round, Fire) ->
+set_fire(Msg, Field, #round{status = Status} = Round, Fire, Size) ->
     Direction = [<<"North">>, <<"South">>, <<"West">>, <<"East">>],
     case Status of
         inactive ->
@@ -790,12 +790,12 @@ set_fire(Msg, Field, #round{status = Status} = Round, Fire) ->
             end;
 
         set_fire ->
-            Field2 = fire(Field, Fire),
+            Field2 = fire(Field, Fire, Size),
             {<<Msg/binary>>, Field2, Round#round{status = inactive}, Fire}
     end.
 
-fire(Field, Fire) ->
-    {ok, Size} = application:get_env(polyana, battle_field_size),
+fire(Field, Fire, {Size, _Nothing}) ->
+%%    {ok, Size} = application:get_env(polyana, battle_field_size),
     fire(maps:keys(Fire), Field, Fire, Size).
 
 fire([], Field, _Fire, _Size) ->
