@@ -650,7 +650,6 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
             {ok, EventId} = pl_storage_srv:save_event(battle_end,
                                                       BattleId,
                                                       PlayerId),
-            ok = award_achievements(PlayerId, PlayerPid),
 
             case (WinnerPid == PlayerPid) of
                 true ->
@@ -673,7 +672,9 @@ save_end_game_data(BattleId, WinnerPid, PlayersInfo, CurrencyType, Bid) ->
 
                 _ ->
                     ok
-            end
+            end,
+
+            ok = award_achievements(PlayerId, PlayerPid)
         end,
         maps:to_list(PlayersInfo)
     ).
