@@ -25,21 +25,24 @@ connect_manager = connect.Storage()
 async def cmd_start(message: types.Message):
     await message.reply("Привет, с чего начнем?",
                         reply_markup=kb.inline_kb_start)
+    await Form.idle.set()
 
 
-@dp.callback_query_handler(lambda c: c.data == 'button_reg')
+@dp.callback_query_handler(lambda c: c.data == 'button_reg',
+                           state=Form.idle)
 async def process_callback_button1(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await Form.login_reg.set()
 
     await bot.send_message(callback_query.from_user.id,
-                           'Регстирация: введите логин')
+                           'Регистрация: введите логин')
 
 
 @dp.message_handler(state=Form.login_reg)
 async def process_login(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['login_reg'] = message.text
+
     await Form.password_reg.set()
     await message.reply("Регистрация: введите пароль")
 
@@ -48,23 +51,37 @@ async def process_login(message: types.Message, state: FSMContext):
 async def process_password(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['password_reg'] = message.text
+
     await message.reply("Пробуем зарегистрироваться...")
+
     async with state.proxy() as data:
-        Log = data['login_reg']
-        Pas = data['password_reg']
+        login = data['login_reg']
+        password = data['password_reg']
         API_ENDPOINT = "http://127.0.0.1:8000/polyana/api/registration/"
-        data1 = {'nickname': Log, 'password': Pas}
-        r = requests.post(API_ENDPOINT, data1)
+        credentials = {'nickname': login, 'password': password}
+        r = requests.post(API_ENDPOINT, credentials)
         Answ = re.compile(r'{"([a-zA-z]*)')
         Answ = Answ.search(r.text)
         Answ = Answ.group(1)
         time.sleep(0.2)
+
         if Answ == 'response':
             time.sleep(0.2)
 
             await bot.send_message(message.chat.id,
-                                   text="Успешно зарегистрирован!",
-                                   reply_markup=kb.inline_kb_re_auth)
+                                   text="Успешно зарегистрирован!")
+
+            if await authentication(message.chat.id, login, password):
+                time.sleep(0.1)
+
+                await message.reply("Успешно вошли!",
+                                    reply_markup=kb.inline_kb_battle)
+
+                await Form.authenticated_idle.set()
+            else:
+                await message.reply("Вход не удался!",
+                                    reply_markup=kb.inline_kb_start)
+                await Form.idle.set()
         else:
             await bot.send_message(
                 message.chat.id,
@@ -72,10 +89,11 @@ async def process_password(message: types.Message, state: FSMContext):
                       "таким ником уже существует, попробуйте еще раз!"),
                 reply_markup=kb.inline_kb_start)
 
-        data.state = None
+            await Form.idle.set()
 
 
-@dp.callback_query_handler(lambda c: c.data == 'button_auth')
+@dp.callback_query_handler(lambda c: c.data == 'button_auth',
+                           state=Form.idle)
 async def process_callback_button2(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await Form.login_auth.set()
@@ -87,7 +105,7 @@ async def process_login_auth(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['login'] = message.text
     await Form.password_auth.set()
-    await message.reply("Вход: введите пароль")
+    await bot.send_message(message.chat.id, "Вход: введите пароль")
 
 
 @dp.message_handler(state=Form.password_auth)
@@ -99,31 +117,26 @@ async def process_password_auth(message: types.Message, state: FSMContext):
     await message.reply("Входим...")
 
     async with state.proxy() as data:
-        Log = data['login']
-        Pas = data['password']
-        connect_manager.add_connect(message.chat.id)
-        tn = connect_manager.get_connect(message.chat.id)
-        time.sleep(0.2)
+        login = data['login']
+        password = data['password']
 
-        tn.write(b'AUTH ' + Log.encode('ascii') + b' ' +
-                 Pas.encode('ascii') + b'\r\n')
-
-        time.sleep(0.2)
-        answ1 = tn.read_eager()
-
-        if answ1 == b'SUCCESS\n':
+        if await authentication(message.chat.id, login, password):
             time.sleep(0.1)
 
-            await message.reply("Успешно вошли!",
-                                reply_markup=kb.inline_kb_battle)
+            await bot.send_message(message.chat.id,
+                                   "Успешно вошли!",
+                                   reply_markup=kb.inline_kb_battle)
+
+            await Form.authenticated_idle.set()
         else:
-            await message.reply("Неправильный логин или пароль!",
-                                reply_markup=kb.inline_kb_start)
+            await bot.send_message(message.chat.id,
+                                   "Неправильный логин или пароль!",
+                                   reply_markup=kb.inline_kb_start)
+            await Form.idle.set()
 
-        data.state = None
 
-
-@dp.callback_query_handler(lambda c: c.data == 'button_battle')
+@dp.callback_query_handler(lambda c: c.data == 'button_battle',
+                           state=Form.authenticated_idle)
 async def process_callback_button_battle(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await Form.reg_battle_bid.set()
@@ -147,46 +160,76 @@ async def failed_process_bid(message: types.Message):
 async def process_reg_battle_bid(message: types.Message, state: FSMContext):
     await Form.reg_battle_currency.set()
     await state.update_data(reg_battle_bid=int(message.text))
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-    markup.add("GOLD", "SILVER")
-    await message.reply("В какой валюте ставим?", reply_markup=markup)
+
+    await message.reply("В какой валюте ставим?",
+                        reply_markup=kb.inline_kb_currency)
 
 
-@dp.message_handler(lambda message: message.text not in ["GOLD", "SILVER"],
-                    state=Form.reg_battle_currency)
-async def failed_process_reg_battle_currency(message: types.Message):
-    return await message.reply("Используй клавиатуру для выбора валюты!")
-
-
-@dp.message_handler(state=Form.reg_battle_currency)
-async def process_gender(message: types.Message, state: FSMContext):
+@dp.callback_query_handler(lambda c: c.data == 'currency_silver',
+                           state=Form.reg_battle_currency)
+async def process_silver(callback_query, state: FSMContext):
     await Form.reg_battle.set()
 
+    await bot.send_message(callback_query.from_user.id,
+                           "Пробуем начать бой...")
+
     async with state.proxy() as data:
-        data['reg_battle_currency'] = message.text
+        data['reg_battle_currency'] = 'SILVER'
 
-    markup = types.ReplyKeyboardRemove()
-    await bot.send_message(message.chat.id,
-                           "Пробуем зайти в комнату...\n" +
-                           "Нужно размять пальцы, напишите что нибудь!",
-                           reply_markup=markup)
-
-
-@dp.message_handler(state=Form.reg_battle)
-async def process_reg_battle(message: types.Message, state: FSMContext):
-    async with state.proxy() as data:
         data['reg_battle'] = True
-        Bid = data['reg_battle_bid']
-        Currency = data['reg_battle_currency']
-        data.state = None
-    tn = connect_manager.get_connect(message.chat.id)
+        bid = data['reg_battle_bid']
+        currency = data['reg_battle_currency']
+
+    tn = connect_manager.get_connect(callback_query.from_user.id)
     time.sleep(0.1)
 
-    tn.write(b'BATTLE ' + str(Bid).encode('ascii') + b' ' +
-             Currency.encode('ascii') + b'\r\n')
+    tn.write(b'BATTLE ' + str(bid).encode('ascii') + b' ' +
+             currency.encode('ascii') + b'\r\n')
 
     time.sleep(0.1)
-    await check_oponent(message.chat.id)
+    await check_oponent(callback_query.from_user.id)
+
+
+@dp.callback_query_handler(lambda c: c.data == 'currency_gold',
+                           state=Form.reg_battle_currency)
+async def process_silver(callback_query, state: FSMContext):
+    await Form.reg_battle.set()
+
+    await bot.send_message(callback_query.from_user.id,
+                           "Пробуем начать бой...")
+
+    async with state.proxy() as data:
+        data['reg_battle_currency'] = 'GOLD'
+
+        data['reg_battle'] = True
+        bid = data['reg_battle_bid']
+        currency = data['reg_battle_currency']
+
+    tn = connect_manager.get_connect(callback_query.from_user.id)
+    time.sleep(0.1)
+
+    tn.write(b'BATTLE ' + str(bid).encode('ascii') + b' ' +
+             currency.encode('ascii') + b'\r\n')
+
+    time.sleep(0.1)
+    await check_oponent(callback_query.from_user.id)
+
+
+async def authentication(chat_id, login, password):
+    connect_manager.add_connect(chat_id)
+    tn = connect_manager.get_connect(chat_id)
+    time.sleep(0.2)
+
+    tn.write(b'AUTH ' + login.encode('ascii') + b' ' +
+             password.encode('ascii') + b'\r\n')
+
+    time.sleep(0.2)
+    answ1 = tn.read_eager()
+
+    if answ1 == b'SUCCESS\n':
+        return True
+    else:
+        return False
 
 
 async def get_battle_map(answ1, id):
@@ -202,6 +245,7 @@ async def get_battle_map(answ1, id):
         else:
             if b'Congratulations!' in battle_map.split():
                 await re_battle(id, battle_map)
+                await Form.authenticated_idle.set()
             else:
                 battle_map = battle_map.decode('ascii')
                 battle_map = battle_map.replace(' A ', '😎')
@@ -211,6 +255,7 @@ async def get_battle_map(answ1, id):
                 battle_map = battle_map.replace('player B', 'player 😈')
                 battle_map = battle_map.replace('B wins', '😈 wins')
                 battle_map = battle_map.replace(' X ', '💩')
+                battle_map = battle_map.replace(' F ', '🔥')
                 battle_map = battle_map.replace('   ', '🌎')
                 battle_map = battle_map.replace('|', '')
                 battle_map = battle_map.replace('-', '')
@@ -249,6 +294,13 @@ async def check_oponent(id):
                 await bot.send_message(id, "Вы находитесь в очереди, ожидайте")
                 answ = tn.read_eager()
                 time.sleep(0.2)
+            elif answ == b'YOU HAVE NOT ENOUGH MONEY\n':
+                await bot.send_message(id,
+                                       "Недостаточно денег",
+                                       reply_markup=kb.inline_kb_battle)
+
+                await Form.authenticated_idle.set()
+                return
             else:
                 answ = tn.read_eager()
                 time.sleep(0.2)
@@ -257,6 +309,7 @@ async def check_oponent(id):
     else:
         if b'Congratulations!' in battle_map.split():
             await re_battle(id, battle_map)
+            await Form.authenticated_idle.set()
         else:
             await get_battle_map(battle_map, id)
 
@@ -272,6 +325,7 @@ async def re_battle(id, battle_map):
     battle_map = battle_map.replace('player B', 'player 😈')
     battle_map = battle_map.replace('B wins', '😈 wins')
     battle_map = battle_map.replace(' X ', '💩')
+    battle_map = battle_map.replace(' F ', '💩')
     battle_map = battle_map.replace('   ', '🌎')
     battle_map = battle_map.replace('|', '')
     battle_map = battle_map.replace('-', '')
@@ -315,15 +369,37 @@ async def process_callback_button_down(callback_query: types.CallbackQuery):
     await get_battle_map(b'', callback_query.from_user.id)
 
 
-@dp.callback_query_handler(lambda c: c.data == 'button_quit')
+@dp.callback_query_handler(lambda c: c.data == 'button_quit',
+                           state='*')
 async def process_callback_button_quit(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
 
     await bot.send_message(callback_query.from_user.id,
-                           "Ты всегда можешь вернуться, просто введи /start")
+                           "Чтобы вернуться, пришли мне что-нибудь.")
 
     tn = connect_manager.get_connect(callback_query.from_user.id)
-    tn.close()
+
+    if tn:
+        tn.close()
+
+    await Form.idle.set()
+
+
+@dp.callback_query_handler()
+async def process_callback_button_quit(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(callback_query.from_user.id,
+                           "Действие неактуально.")
+
+
+@dp.message_handler(state=Form.authenticated_idle)
+async def process_idle_typing(message: types.Message, state: FSMContext):
+    await message.reply("Лец батл", reply_markup=kb.inline_kb_battle)
+
+
+@dp.message_handler(state='*')
+async def process_idle_typing(message: types.Message, state: FSMContext):
+    await cmd_start(message)
 
 
 if __name__ == '__main__':

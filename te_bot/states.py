@@ -10,3 +10,5 @@ class Form(StatesGroup):
     reg_battle_currency = State()
     reg_battle = State()
     move = State()
+    idle = State()
+    authenticated_idle = State()

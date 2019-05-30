@@ -12,4 +12,7 @@ class Storage:
         self.connect[user_id] = tn
 
     def get_connect(self, user_id):
-        return self.connect[user_id]
+        try:
+            return self.connect[user_id]
+        except KeyError:
+            return None
