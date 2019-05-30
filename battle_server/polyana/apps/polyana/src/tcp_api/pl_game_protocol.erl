@@ -76,19 +76,19 @@ loop(#state{socket = Socket,
             pl_player_srv:stop(PlayerSrv),
             ok = Transport:close(Socket);
 
-        {ok, <<"u", _/binary>>} ->
+        {ok, <<"w", _/binary>>} ->
             pl_player_srv:move(up, PlayerSrv),
             loop(State);
 
-        {ok, <<"d", _/binary>>} ->
+        {ok, <<"s", _/binary>>} ->
             pl_player_srv:move(down, PlayerSrv),
             loop(State);
 
-        {ok, <<"l", _/binary>>} ->
+        {ok, <<"a", _/binary>>} ->
             pl_player_srv:move(left, PlayerSrv),
             loop(State);
 
-        {ok, <<"r", _/binary>>} ->
+        {ok, <<"d", _/binary>>} ->
             pl_player_srv:move(right, PlayerSrv),
             loop(State);
 
