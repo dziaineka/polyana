@@ -17,24 +17,14 @@ import aiogram.utils.markdown as md
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import ParseMode
 from aiogram.utils import executor
+from states import Form
 
 import keyboards as kb
 
 
-class Form(StatesGroup):
-    login_reg = State()
-    password_reg = State()
-    login_auth = State()
-    password_auth = State()
-    reg_battle_bid = State()
-    reg_battle_currency = State()
-    reg_battle = State()
-    move = State()
-
-API_TOKEN = '584143393:AAED-5U6R6XHoMtONSuLt_s2VE0v32TT_04'
+API_TOKEN = 'PUT_YOUR_TOKEN_HERE'
 
 loop = asyncio.get_event_loop()
 bot = Bot(token=API_TOKEN, loop=loop)
