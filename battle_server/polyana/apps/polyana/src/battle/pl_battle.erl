@@ -451,8 +451,13 @@ gen_empty_field(duel, FieldHeight, FieldWidth, Acc,
 
 gen_empty_field(royal, FieldHeight, FieldWidth, Acc,
                 FieldHeight_orig, FieldWidth_orig) ->
-    case rand:uniform(13) of
-        1 ->
+    NotStartPosition = not_start_position(FieldHeight,
+                                          FieldWidth,
+                                          FieldHeight_orig,
+                                          FieldWidth_orig),
+
+    case rand:uniform(8) of
+        1 when NotStartPosition ->
             Acc2 = Acc#{{FieldHeight,FieldWidth} => <<"X">>};
 
         _ ->
@@ -463,14 +468,36 @@ gen_empty_field(royal, FieldHeight, FieldWidth, Acc,
                     FieldHeight_orig, FieldWidth_orig).
 
 
+not_start_position(FieldHeight,
+                   FieldWidth,
+                   FieldHeight_orig,
+                   FieldWidth_orig) ->
+    HeightFits = (FieldHeight > 1) and (FieldHeight < (FieldHeight_orig - 1)),
+    WidthFits = (FieldWidth > 1) and (FieldWidth < (FieldWidth_orig - 1)),
+
+    if
+        HeightFits orelse WidthFits ->
+            true;
+
+        true ->
+            false
+    end.
+
 change_order([Active|Passive], 1, Round)->
     New_Round = check_round(Round),
     Order = lists:append(Passive, [Active]),
     Turn = length(Order),
-%%    Пока убираем замену первого игрока в новом раунде
-%%    [Active1|Passive2] =Order,                  % две строчки кода, для того, чтобы
-%%    Order2 = lists:append(Passive2, [Active1]), % менять первого игрока в начале раунда
-    {Order, Turn, New_Round};
+    
+    if
+        Turn > 2 ->
+            [Active1|Passive2] = Order,                  % две строчки кода, для того, чтобы
+            Order2 = lists:append(Passive2, [Active1]), % менять первого игрока в начале раунда
+            {Order2, Turn, New_Round};
+
+        true ->
+            {Order, Turn, New_Round}
+    end;
+
 change_order([Active|Passive], Turn_Count, Round)->
     Order = lists:append(Passive, [Active]),
     {Order, Turn_Count-1, Round}.
