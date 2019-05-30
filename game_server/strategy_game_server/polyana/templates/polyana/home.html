@@ -1,31 +1,48 @@
 {% extends 'polyana/base.html' %}
 
 {% block content %}
-<p>
- <div class="row justify-content-end mt-12">
-{% if user.is_authenticated and user == player.user_id %}
-  <p><a href="{% url 'shop' %}">SHOP</a></p>
-</div>
-  <h1>My account</h2>
-  <br>
-  <h4>Welcome, {{ user.username }}!</h4>
-  <br>
 
-  <h4>Your info:</h4>
-  {% for m in money %}
-    {{m.currency.currency_type}}: {{m.amount}}<br>
-  {% endfor %}
-  <br>
-  <h6>played_battles: {{ player.played_battles }}</h6>
-  <h6>battles_won: {{ player.battles_won }}</h6>
-  <h6>winrate: {{ player.winrate }}</h6>
-  <br>
-  <br>
-  <h4>Leaderboard:</h4>
-  {% for leader in leaders %}
-  {{ leader.nickname }}: {{ leader.winrate }} / {{ leader.played_battles }}<br>
-  {% endfor %}
+  <div class="col-md-12">
+    <h1>Welcome, {{ user.username }}!</h2>
+    <br>
+        <div class="row">
 
-  <br>
-{% endif %}
+            <div class="col-md-7">
+              <h3>Your info</h3><br>
+              <p>
+              <h4>Money:</h4>
+                {% for m in money %}
+                  <p>{{m.currency.currency_type}}: {{m.amount}}</p>
+                {% endfor %}
+                </p>
+                <br>
+                <h4>Statistics:</h4>
+                <p>Played battles: {{ player.played_battles }}<br></p>
+                <p>Battles won: {{ player.battles_won }}<br></p>
+                <p>Winrate: {{ player.winrate }}<br></p>
+            </div>
+                <div class="col-md-5 text-center">
+                  <h4>Leaderboard:</h4>
+                  <table class="table">
+                      <thead>
+                          <tr>
+                              <th>Nickname</th>
+                              <th>Winrate</th>
+                              <th>Played battles</th>
+                          <tr>
+                      </thead>
+                      <tbody>
+                          {% for leader in leaders %}
+                          <tr>
+                              <td>{{ leader.nickname }}</td>
+                              <td>{{ leader.winrate }}</td>
+                              <td>{{ leader.played_battles }}</td>
+                          </tr>
+                          {% endfor %}
+                      </tbody>
+                  </table>
+                </div>
+            </div>
+    </div>
+
 {% endblock %}
