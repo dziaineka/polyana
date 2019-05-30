@@ -352,12 +352,21 @@ check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg,
 
         {WinnerPid, WinMessage} ->
             State2 = State#state{battle_field = NewField,
-                                players_info = NewPlayersInfo,
-                                turn_order = Order3,
-                                winner = WinnerPid},
+                                 players_info = NewPlayersInfo,
+                                 turn_order = Order3,
+                                 winner = WinnerPid},
+
+            PlayerInfo = maps:get(WinnerPid, State#state.players_info),
+            Bank = State#state.bid * maps:size(State#state.players_info),
+
+            BinBank = get_strbin_bank(State#state.currency_type,
+                                      PlayerInfo#player_info.currency_type,
+                                      Bank),
 
             Reply = <<(list_to_binary(StringField))/binary,
-                      WinMessage/binary, "\n">>,
+                      WinMessage/binary, "\n",
+                      "Winner got the bank of ",
+                      BinBank/binary>>,
 
             multicast(Reply, NewPlayersList),
 
@@ -365,6 +374,14 @@ check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg,
 
             {noreply, State2}
     end.
+
+get_strbin_bank(CurrencyFrom, CurrencyTo, Bank) ->
+    Sum = integer_to_binary(pl_storage_srv:exchange_currency(CurrencyFrom,
+                                                             CurrencyTo,
+                                                             Bank)),
+    lager:warning("get_strbin_bank ~p", [<<Sum/binary, " ", CurrencyTo/binary>>]),
+
+    <<Sum/binary, " ", CurrencyTo/binary>>.
 
 move(PlayerPid, Direction, Field, PlayersInfo,
                 [Active|_Passive] = Order, Turn_Count,
