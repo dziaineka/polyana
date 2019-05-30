@@ -23,7 +23,7 @@ from aiogram.utils import executor
 
 import keyboards as kb
 
-API_TOKEN = '763453961:AAEz0rrLgEp9ZpSQDTKpH3gUidYticv4rGc'
+API_TOKEN = 'PUT_YOUR_TOKEN'
 
 loop = asyncio.get_event_loop()
 bot = Bot(token=API_TOKEN, loop=loop)
