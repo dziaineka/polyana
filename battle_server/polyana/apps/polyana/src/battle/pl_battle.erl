@@ -459,10 +459,18 @@ change_order([Active|Passive], 1, Round)->
     New_Round = check_round(Round),
     Order = lists:append(Passive, [Active]),
     Turn = length(Order),
-    [Active1|Passive2] =Order,                  % две строчки кода, для того, чтобы
-    Order2 = lists:append(Passive2, [Active1]), % менять первого игрока в начале раунда
-    {Order2, Turn, New_Round};
-change_order([Active|Passive], Turn_Count, Round)->
+
+    if
+        Turn > 2 ->
+            [Active1|Passive2] = Order,                  % две строчки кода, для того, чтобы
+            Order2 = lists:append(Passive2, [Active1]), % менять первого игрока в начале раунда
+            {Order2, Turn, New_Round};
+
+        true ->
+            {Order, Turn, New_Round}
+    end;
+
+change_order([Active|Passive], Turn_Count, Round) ->
     Order = lists:append(Passive, [Active]),
     {Order, Turn_Count-1, Round}.
 
