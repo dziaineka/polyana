@@ -156,7 +156,15 @@ handle_call({check_enough_money, PlayerId, CurrencyType, Bid},
         "AND amount >= $3"
     ],
 
-    Parameters = [PlayerId, binary_to_list(CurrencyType), Bid],
+    if
+        Bid > 2147483647 -> % больше, чем постгресный integer
+            NewBid = 2147483647;
+
+        true ->
+            NewBid = Bid
+    end,
+
+    Parameters = [PlayerId, binary_to_list(CurrencyType), NewBid],
 
     case epgsql:equery(Conn, Query, Parameters) of
         {ok, _Columns, []} ->
