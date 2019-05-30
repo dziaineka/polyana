@@ -23,8 +23,8 @@ from .forms import (
 from .helpers.player import create_player
 from .helpers.token import get_token, get_token_expiration
 from .helpers.transaction_money import (
-    transaction_save, 
-    money_save, 
+    transaction_save,
+    money_save,
     account_replenishment_after_registration
     )
 
@@ -92,7 +92,7 @@ class ApiLoginView(View):
 
         try:
             player = Player.objects.get(
-                nickname=form.cleaned_data['nickname'], 
+                nickname=form.cleaned_data['nickname'],
                 password=md5(form.cleaned_data['password'].encode()).hexdigest()
             )
 
@@ -159,7 +159,7 @@ class ApiStatsView(View):
 
         try:
             player = Player.objects.get(
-                nickname=form.cleaned_data['nickname'], 
+                nickname=form.cleaned_data['nickname'],
                 token=form.cleaned_data['token']
             )
 
@@ -223,7 +223,7 @@ class HomePageView(View):
     def get(self, request):
         try:
             player = Player.objects.get(user_id=self.request.user)
-            leaders = Player.objects.all().order_by('-winrate')[0:10]
+            leaders = Player.objects.all().order_by('-winrate', '-played_battles')[0:10]
             money = Money.objects.filter(player_id=player)
         except Player.DoesNotExist as e:
             return HttpResponse('Error 404')
