@@ -19,7 +19,7 @@
                 <h4>Statistics:</h4>
                 <p>Played battles: {{ player.played_battles }}<br></p>
                 <p>Battles won: {{ player.battles_won }}<br></p>
-                <p>Winrate: {{ player.winrate }}<br></p>
+                <p>Winrate: {{ player.winrate | floatformat:3 }}<br></p>
             </div>
                 <div class="col-md-5 text-center">
                   <h4>Leaderboard:</h4>
@@ -35,7 +35,7 @@
                           {% for leader in leaders %}
                           <tr>
                               <td>{{ leader.nickname }}</td>
-                              <td>{{ leader.winrate }}</td>
+                              <td>{{ leader.winrate | floatformat:3}}</td>
                               <td>{{ leader.played_battles }}</td>
                           </tr>
                           {% endfor %}
