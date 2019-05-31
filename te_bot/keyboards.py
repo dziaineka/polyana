@@ -23,6 +23,7 @@ inline_btn_right = InlineKeyboardButton('👉', callback_data='button_right')
 
 inline_kb_start = InlineKeyboardMarkup().add(inline_btn_reg, inline_btn_auth)
 inline_kb_re_auth = InlineKeyboardMarkup(row_width=2).add(inline_btn_auth)
+inline_kb_quite = InlineKeyboardMarkup(row_width=1).add(inline_btn_quit)
 
 inline_kb_battle = InlineKeyboardMarkup(row_width=2).add(inline_btn_battle,
                                                          inline_btn_royale,

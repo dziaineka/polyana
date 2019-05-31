@@ -316,7 +316,10 @@ async def check_oponent(id):
 
         while answ != b'' and answ != b'Searching the opponent...\n':
             if answ == b'TO BATTLE!\n':
-                await bot.send_message(id, "Вы находитесь в очереди, ожидайте")
+                await bot.send_message(id,
+                                       "Вы находитесь в очереди, ожидайте",
+                                       reply_markup=kb.inline_kb_quite)
+
                 answ = tn.read_eager()
                 time.sleep(0.2)
             elif answ == b'YOU HAVE NOT ENOUGH MONEY\n':
