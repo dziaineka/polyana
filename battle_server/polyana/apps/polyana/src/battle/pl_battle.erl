@@ -48,7 +48,8 @@
 
 -record(round, {
     count,
-    status
+    status,
+    players_amount
 }).
 
 %%%===================================================================
@@ -101,7 +102,11 @@ init({CurrencyType, Bid, PlayersWithCurrencies}) ->
 
     invite_players_to_game(PlayersInfo, Order, StringField),
     Turn_Count = length(Order),
-    Round = #round{count = 1, status = inactive},
+
+    Round = #round{count = 1,
+                   status = inactive,
+                   players_amount = maps:size(PlayersInfo)
+        },
 
     State = #state{battle_id = BattleId,
                    players_info = PlayersInfo,
@@ -110,9 +115,9 @@ init({CurrencyType, Bid, PlayersWithCurrencies}) ->
                    turn_order = Order,
                    bid = Bid,
                    currency_type = CurrencyType,
-                    turn_count = Turn_Count,
-                    round = Round,
-                    fire = #{}
+                   turn_count = Turn_Count,
+                   round = Round,
+                   fire = #{}
         },
 
     {ok, State}.
@@ -366,7 +371,7 @@ check_battle_conditions(NewField, NewPlayersInfo, NewOrder, Size, State, Msg,
             Reply = <<(list_to_binary(StringField))/binary,
                       WinMessage/binary, "\n",
                       "Winner got the bank of ",
-                      BinBank/binary>>,
+                      BinBank/binary, "\n">>,
 
             multicast(Reply, NewPlayersList),
 
@@ -789,18 +794,23 @@ award_first_win(PlayerId, PlayerPid) ->
             ok
     end.
 
-check_round(#round{count = Count, status = Status}) ->
+check_round(#round{count = Count,
+                   status = Status,
+                   players_amount = PlayersAmount} = Round) ->
     case Count + 1 of
-        Count2 when Count2 rem 4 == 0->
+        Count2 when PlayersAmount =< 2 -> % огонь только если батол рояль
+            Round#round{count= Count2, status = Status};
+
+        Count2 when Count2 rem 4 == 0 ->
             Status2 = set_fire,
-            lager:info("Round ~p with status ~p", [Count, Status]),
-            #round{count= Count2, status = Status2};
+            Round#round{count= Count2, status = Status2};
+
         Count2 when (Count2+1) rem 4 == 0 ->
             Status2 = prepared_fire,
-            lager:info("Round ~p with status ~p", [Count, Status]),
-            #round{count= Count2, status = Status2};
-        Count2 -> lager:info("Round ~p with status ~p", [Count, Status]),
-            #round{count= Count2, status = Status}
+            Round#round{count= Count2, status = Status2};
+
+        Count2 ->
+            Round#round{count= Count2}
     end.
 
 
