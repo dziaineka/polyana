@@ -39,11 +39,11 @@ class ApiRegistrationView(View):
         if form.is_valid():
 
             user = User()
-            user.save()
-            player = create_player(user, form.cleaned_data['nickname'], form.cleaned_data['password'])
-            user.username = player.nickname
+            user.username = form.cleaned_data['nickname']
             user.set_password(form.cleaned_data['password'])
             user.save()
+
+            player = create_player(user, form.cleaned_data['nickname'], form.cleaned_data['password'])
 
             event = event_save(player, 'registration')
 
